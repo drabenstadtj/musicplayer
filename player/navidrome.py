@@ -98,7 +98,7 @@ class NavidromeClient:
         except Exception as e:
             print(f"Error fetching playlist songs: {e}")
             return []
-    
+        
     def get_stream_url(self, song_id):
         """Get streaming URL for a song"""
         try:
@@ -112,7 +112,9 @@ class NavidromeClient:
                 't': token,
                 's': salt,
                 'v': self.api_version,
-                'c': self.client_name
+                'c': self.client_name,
+                'format': 'mp3',  # Request mp3 format
+                'maxBitRate': '320'  # High quality
             }
             
             # Build URL with params
@@ -121,8 +123,8 @@ class NavidromeClient:
         
         except Exception as e:
             print(f"Error getting stream URL: {e}")
-            return None
-    
+            return None  
+
     def get_cover_art_url(self, cover_art_id, size=200):
         """Get cover art URL"""
         if not cover_art_id:
