@@ -1,13 +1,7 @@
 import curses
 from player.navidrome import NavidromeClient
 from player.local_library import LocalLibrary
-try:
-    from player.audio import AudioPlayer
-    from player.audio_local import LocalAudioPlayer
-except:
-    from player.audio_mock import AudioPlayer
-    LocalAudioPlayer = AudioPlayer
-    print("Using mock audio player (no sound)")
+from player.audio import AudioPlayer
 from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen
 from ui.theme import init_colors
 from hardware.button_controller import ButtonController
@@ -52,7 +46,7 @@ class MusicPlayerApp:
         
         # Scan local library
         self.local_library.scan()
-        self.local_audio = LocalAudioPlayer()
+        self.local_audio = AudioPlayer()
         
         # Show status briefly
         self.stdscr.clear()
