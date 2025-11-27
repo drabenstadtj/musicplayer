@@ -1,7 +1,7 @@
 # Navidrome server configuration
 NAVIDROME_URL = "https://listen.wintermute.lol"
 NAVIDROME_USER = "jack"
-NAVIDROME_PASS = "crypt0"
+NAVIDROME_PASS = ""
 
 # Display settings
 SCREEN_WIDTH = 320
