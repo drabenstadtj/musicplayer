@@ -10,7 +10,7 @@ class AudioPlayer:
         os.environ['SDL_AUDIODRIVER'] = 'alsa'
         os.environ['AUDIODEV'] = 'default'
         
-        print("Initializing pygame mixer with ALSA...")
+        # Initialize pygame mixer quietly
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
         
         self.current_song = None
@@ -20,53 +20,41 @@ class AudioPlayer:
         self.temp_file = None
         pygame.mixer.music.set_volume(self.volume)
         
-        print(f"Pygame mixer initialized: {pygame.mixer.get_init()}")
-        
     def play(self, stream_url, song_info):
         """Play a song from URL"""
         try:
-            print(f"\n=== Attempting to play ===")
-            print(f"Song: {song_info.get('title', 'Unknown')}")
-            
             # Stop current playback
             self.stop()
             
-            print("Downloading audio...")
-            response = requests.get(stream_url, stream=True, timeout=10)
+            # Download audio with larger chunks for speed
+            response = requests.get(stream_url, timeout=5)
             response.raise_for_status()
-            
-            print(f"Download complete. Size: {len(response.content)} bytes")
             
             # Save to temporary file
             if self.temp_file and os.path.exists(self.temp_file):
                 os.remove(self.temp_file)
             
-            # Create temp file with appropriate extension
-            suffix = '.mp3'  # We're requesting mp3 format
+            # Create temp file
+            suffix = '.mp3'
             fd, self.temp_file = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
             
+            # Write all at once (faster than chunked)
             with open(self.temp_file, 'wb') as f:
                 f.write(response.content)
             
-            print(f"Saved to: {self.temp_file}")
-            print("Loading into pygame...")
+            # Load and play
             pygame.mixer.music.load(self.temp_file)
-            
-            print("Starting playback...")
             pygame.mixer.music.play()
             
             self.current_song = song_info
             self.is_playing = True
             self.is_paused = False
             
-            print("✓ Playback started successfully!")
             return True
             
         except Exception as e:
-            print(f"✗ Error playing song: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error playing song: {e}")
             return False
     
     def pause(self):
@@ -114,6 +102,10 @@ class AudioPlayer:
     def volume_down(self, step=0.1):
         """Decrease volume"""
         self.set_volume(self.volume - step)
+    
+    def get_volume(self):
+        """Get current volume"""
+        return self.volume
     
     def get_position(self):
         """Get current playback position in seconds"""
