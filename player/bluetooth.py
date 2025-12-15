@@ -43,6 +43,7 @@ class BluetoothManager:
             return []
 
         devices = []
+        seen_macs = set()
 
         try:
             import time
@@ -53,20 +54,26 @@ class BluetoothManager:
                          timeout=2)
             time.sleep(1)
 
-            # Start scanning
+            # Start BR/EDR (classic Bluetooth) scan
             subprocess.Popen(['bluetoothctl', 'scan', 'on'],
                            stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
 
+            # Also scan for Bluetooth LE (low energy) devices
+            subprocess.Popen(['bluetoothctl', 'scan', 'le'],
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+
             print(f"Scanning for Bluetooth devices ({duration} seconds)...")
+            print("Put your headphones in pairing mode (hold power ~7 seconds)")
             time.sleep(duration)
 
-            # Stop scanning
+            # Stop both scans
             subprocess.run(['bluetoothctl', 'scan', 'off'],
                          capture_output=True,
                          timeout=2)
 
-            # Get list of devices
+            # Get list of all known devices
             result = subprocess.run(['bluetoothctl', 'devices'],
                                   capture_output=True,
                                   text=True,
@@ -82,7 +89,14 @@ class BluetoothManager:
                 if match:
                     mac = match.group(1).upper()
                     name = match.group(2).strip()
-                    if name:  # Only add if name is not empty
+
+                    # Skip LE_ prefixed devices - they're low energy only
+                    # We want the classic Bluetooth version for audio
+                    if name.startswith('LE_'):
+                        continue
+
+                    if name and mac not in seen_macs:
+                        seen_macs.add(mac)
                         paired = self.is_paired(mac)
                         devices.append((mac, name, paired))
                         print(f"Found device: {name} ({mac}) - Paired: {paired}")
