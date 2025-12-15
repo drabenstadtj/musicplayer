@@ -203,28 +203,40 @@ class BluetoothManager:
         return devices
 
     def set_as_default_sink(self):
-        """Set Bluetooth as default audio sink using PulseAudio"""
+        """Set Bluetooth as default audio sink and move active streams to it."""
         try:
-            # List sinks and find bluez (Bluetooth) sink
-            result = subprocess.run(
+            sinks = subprocess.run(
                 ['pactl', 'list', 'short', 'sinks'],
                 capture_output=True,
                 text=True,
                 timeout=2
-            )
+            ).stdout.splitlines()
 
-            # Find bluez sink
-            for line in result.stdout.split('\n'):
-                if 'bluez' in line.lower():
-                    sink_name = line.split()[1]
-                    # Set as default
-                    subprocess.run(
-                        ['pactl', 'set-default-sink', sink_name],
-                        timeout=2
-                    )
-                    return True
+            bluez_sink = None
+            for line in sinks:
+                parts = line.split()
+                if len(parts) >= 2 and 'bluez' in parts[1].lower():
+                    bluez_sink = parts[1]
+                    break
 
-        except Exception as e:
-            pass
+            if not bluez_sink:
+                return False
 
-        return False
+            subprocess.run(['pactl', 'set-default-sink', bluez_sink], timeout=2)
+
+            # Move any currently-playing streams to the bluetooth sink
+            inputs = subprocess.run(
+                ['pactl', 'list', 'short', 'sink-inputs'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            ).stdout.splitlines()
+
+            for line in inputs:
+                input_id = line.split()[0]
+                subprocess.run(['pactl', 'move-sink-input', input_id, bluez_sink], timeout=2)
+
+            return True
+        except Exception:
+            return False
+

@@ -9,12 +9,6 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-try:
-    import ueberzug.lib.v0 as ueberzug
-    UEBERZUG_AVAILABLE = True
-except ImportError:
-    UEBERZUG_AVAILABLE = False
-
 class AlbumArtDisplay:
     """Display album art in terminal using chafa"""
 
@@ -22,8 +16,6 @@ class AlbumArtDisplay:
         self.temp_dir = tempfile.gettempdir()
         self.current_art_file = None
         self.chafa_available = self._check_chafa()
-        self.ueberzug_canvas = None
-        self.ueberzug_placement = None
 
     def _check_chafa(self):
         """Check if chafa is installed"""
@@ -175,72 +167,8 @@ class AlbumArtDisplay:
         lines.append("└" + "─" * (width - 2) + "┘")
         return lines
 
-    def init_ueberzug(self):
-        """Initialize ueberzug for real image display"""
-        if not UEBERZUG_AVAILABLE:
-            return False
-
-        try:
-            self.ueberzug_canvas = ueberzug.Canvas()
-            return True
-        except Exception as e:
-            return False
-
-    def show_image_ueberzug(self, image_path, x, y, width, height):
-        """Display real image using ueberzug overlay
-
-        Args:
-            image_path: Path to image file
-            x: X position in terminal (characters)
-            y: Y position in terminal (characters)
-            width: Width in characters
-            height: Height in characters
-        """
-        if not UEBERZUG_AVAILABLE or not self.ueberzug_canvas:
-            return False
-
-        try:
-            if self.ueberzug_placement:
-                # Remove old placement
-                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
-
-            # Create new placement
-            self.ueberzug_placement = self.ueberzug_canvas.create_placement(
-                'album_art',
-                x=x, y=y,
-                width=width, height=height,
-                path=image_path
-            )
-            self.ueberzug_placement.visibility = ueberzug.Visibility.VISIBLE
-            return True
-
-        except Exception as e:
-            return False
-
-    def hide_ueberzug(self):
-        """Hide the ueberzug image"""
-        if self.ueberzug_placement:
-            try:
-                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
-            except:
-                pass
-
     def cleanup(self):
-        """Clean up temporary files and ueberzug"""
-        # Clean up ueberzug
-        if self.ueberzug_placement:
-            try:
-                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
-            except:
-                pass
-
-        if self.ueberzug_canvas:
-            try:
-                self.ueberzug_canvas.__exit__(None, None, None)
-            except:
-                pass
-
-        # Clean up temp files
+        """Clean up temporary files"""
         if self.current_art_file and os.path.exists(self.current_art_file):
             try:
                 os.remove(self.current_art_file)
