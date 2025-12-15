@@ -2,12 +2,16 @@ import pygame
 import requests
 import tempfile
 import os
+import subprocess
 from io import BytesIO
 
 class AudioPlayer:
     def __init__(self):
         # Configure SDL to use PulseAudio instead of ALSA
         os.environ['SDL_AUDIODRIVER'] = 'pulseaudio'
+
+        # Try to set Bluetooth as default sink before initializing pygame
+        self._ensure_bluetooth_sink()
 
         try:
             # Initialize pygame with PulseAudio backend
@@ -28,6 +32,30 @@ class AudioPlayer:
 
         if self.audio_available:
             pygame.mixer.music.set_volume(self.volume)
+
+    def _ensure_bluetooth_sink(self):
+        """Ensure Bluetooth sink is set as default if available"""
+        try:
+            # Get list of sinks
+            result = subprocess.run(
+                ['pactl', 'list', 'short', 'sinks'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            # Look for bluez sink
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and 'bluez' in parts[1].lower():
+                    bluez_sink = parts[1]
+                    print(f"Found Bluetooth sink: {bluez_sink}")
+                    # Set as default
+                    subprocess.run(['pactl', 'set-default-sink', bluez_sink], timeout=2)
+                    print(f"Set {bluez_sink} as default audio sink")
+                    return
+        except Exception as e:
+            print(f"Could not set Bluetooth sink: {e}")
         
     def play(self, stream_url, song_info):
         """Play a song from URL"""
