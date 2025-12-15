@@ -606,17 +606,46 @@ class BluetoothSettingsScreen(BaseScreen):
             y += 2
 
         # Device list
-        self.stdscr.addstr(y, 2, "Available Devices:", curses.A_BOLD)
+        self.stdscr.addstr(y, 2, "Options:", curses.A_BOLD)
         y += 2
 
-        if not self.devices:
-            self.stdscr.addstr(y, 4, "No devices found. Press 'S' to scan.", curses.A_DIM)
+        # Always show "Scan for devices" as first option
+        scan_selected = self.selected == 0
+        scan_text = "> [Scan for devices]" if scan_selected else "  [Scan for devices]"
+        if scan_selected:
+            self.stdscr.addstr(y, 4, scan_text, curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
         else:
+            self.stdscr.addstr(y, 4, scan_text, curses.color_pair(COLOR_NORMAL))
+        y += 1
+
+        # Show connected device disconnect option if connected
+        if self.connected_device:
+            disconnect_selected = self.selected == 1
+            mac, name = self.connected_device
+            disconnect_text = f"> [Disconnect {name}]" if disconnect_selected else f"  [Disconnect {name}]"
+            if disconnect_selected:
+                self.stdscr.addstr(y, 4, truncate_to_width(disconnect_text, self.width - 6),
+                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+            else:
+                self.stdscr.addstr(y, 4, truncate_to_width(disconnect_text, self.width - 6),
+                                 curses.color_pair(COLOR_NORMAL))
+            y += 1
+
+        y += 1
+        if self.devices:
+            self.stdscr.addstr(y, 2, "Devices:", curses.A_BOLD)
+            y += 1
+
+        # Calculate offset for device list items
+        device_offset = 2 if self.connected_device else 1
+
+        if self.devices:
             for i, (mac, name, paired) in enumerate(self.devices):
                 if y >= self.height - 3:
                     break
 
-                is_selected = i == self.selected
+                list_index = i + device_offset
+                is_selected = list_index == self.selected
                 prefix = "> " if is_selected else "  "
 
                 # Show device name
@@ -642,31 +671,35 @@ class BluetoothSettingsScreen(BaseScreen):
 
                 y += 1
 
-        self.draw_footer("↑/↓:Navigate  ENTER:Connect  S:Scan  D:Disconnect  BACKSPACE:Back")
+        self.draw_footer("↑/↓:Navigate  SELECT:Choose  BACK:Return")
         self.stdscr.refresh()
 
     def handle_input(self, key):
+        # Calculate max selection index
+        device_offset = 2 if self.connected_device else 1
+        max_selection = len(self.devices) + device_offset - 1
+
         if key == curses.KEY_UP:
             self.selected = max(0, self.selected - 1)
 
         elif key == curses.KEY_DOWN:
-            self.selected = min(len(self.devices) - 1, self.selected + 1)
+            self.selected = min(max_selection, self.selected + 1)
 
-        elif key == ord('s') or key == ord('S'):
-            # Scan for devices
-            self.scanning = True
-            self.status_message = "Scanning..."
-            self.draw()
-            self.stdscr.refresh()
+        elif key == ord('\n'):  # Enter/SELECT button
+            if self.selected == 0:
+                # Scan for devices option
+                self.scanning = True
+                self.status_message = "Scanning..."
+                self.draw()
+                self.stdscr.refresh()
 
-            self.devices = self.bt.scan_devices(duration=5)
-            self.scanning = False
-            self.status_message = f"Found {len(self.devices)} device(s)"
-            self.selected = 0
+                self.devices = self.bt.scan_devices(duration=5)
+                self.scanning = False
+                self.status_message = f"Found {len(self.devices)} device(s)"
+                self._refresh_devices()
 
-        elif key == ord('d') or key == ord('D'):
-            # Disconnect current device
-            if self.connected_device:
+            elif self.connected_device and self.selected == 1:
+                # Disconnect option
                 mac, name = self.connected_device
                 self.status_message = f"Disconnecting from {name}..."
                 self.draw()
@@ -677,36 +710,39 @@ class BluetoothSettingsScreen(BaseScreen):
                     self.connected_device = None
                 else:
                     self.status_message = "Failed to disconnect"
+                self._refresh_devices()
 
-        elif key == ord('\n'):  # Enter - connect to selected device
-            if self.devices and 0 <= self.selected < len(self.devices):
-                mac, name, paired = self.devices[self.selected]
+            else:
+                # Connect to a device
+                device_index = self.selected - device_offset
+                if 0 <= device_index < len(self.devices):
+                    mac, name, paired = self.devices[device_index]
 
-                self.status_message = f"Connecting to {name}..."
-                self.draw()
-                self.stdscr.refresh()
-
-                # Pair if not paired
-                if not paired:
-                    self.status_message = "Pairing..."
+                    self.status_message = f"Connecting to {name}..."
                     self.draw()
                     self.stdscr.refresh()
 
-                    if not self.bt.pair_device(mac):
-                        self.status_message = "Pairing failed"
-                        return True
+                    # Pair if not paired
+                    if not paired:
+                        self.status_message = "Pairing..."
+                        self.draw()
+                        self.stdscr.refresh()
 
-                # Connect
-                if self.bt.connect_device(mac):
-                    self.status_message = f"Connected to {name}"
-                    self.connected_device = (mac, name)
+                        if not self.bt.pair_device(mac):
+                            self.status_message = "Pairing failed"
+                            return True
 
-                    # Set as default audio sink
-                    self.bt.set_as_default_sink()
-                else:
-                    self.status_message = "Connection failed"
+                    # Connect
+                    if self.bt.connect_device(mac):
+                        self.status_message = f"Connected to {name}"
+                        self.connected_device = (mac, name)
 
-                self._refresh_devices()
+                        # Set as default audio sink
+                        self.bt.set_as_default_sink()
+                    else:
+                        self.status_message = "Connection failed"
+
+                    self._refresh_devices()
 
         elif key == curses.KEY_BACKSPACE or key == 127:
             return "back"
@@ -718,15 +754,17 @@ class BluetoothSettingsScreen(BaseScreen):
 
     # Button support
     def on_up(self):
-        self.selected = max(0, self.selected - 1)
+        # UP button: Navigate up
+        self.handle_input(curses.KEY_UP)
         self.draw()
 
     def on_down(self):
-        self.selected = min(len(self.devices) - 1, self.selected + 1)
+        # DOWN button: Navigate down
+        self.handle_input(curses.KEY_DOWN)
         self.draw()
 
     def on_select(self):
-        # Simulate Enter key
+        # SELECT button: Choose selected option (scan/disconnect/connect)
         self.handle_input(ord('\n'))
         self.draw()
 

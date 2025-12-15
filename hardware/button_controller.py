@@ -28,16 +28,16 @@ class ButtonController:
         """Register button event handlers"""
         # UP button - navigate up in lists
         self.handler.on_button(Button.UP, ButtonEvent.PRESS, self._on_up)
-        
+
         # DOWN button - navigate down in lists
         self.handler.on_button(Button.DOWN, ButtonEvent.PRESS, self._on_down)
-        
+
         # SELECT button - confirm/play
         self.handler.on_button(Button.SELECT, ButtonEvent.PRESS, self._on_select)
-        
+
         # BACK button - go back/cancel
         self.handler.on_button(Button.BACK, ButtonEvent.PRESS, self._on_back)
-        
+
         # Long press BACK - quit application
         self.handler.on_button(Button.BACK, ButtonEvent.LONG_PRESS, self._on_back_long)
     
