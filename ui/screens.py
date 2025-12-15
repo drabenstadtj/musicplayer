@@ -2,6 +2,7 @@ import curses
 import unicodedata
 from ui.theme import *
 from player.album_art import AlbumArtDisplay
+from player.bluetooth import BluetoothManager
 
 def display_width(text):
     """Calculate the display width of a string, accounting for wide characters"""
@@ -543,3 +544,191 @@ class NowPlayingScreen(BaseScreen):
         """Clean up album art temporary files"""
         if self.album_art:
             self.album_art.cleanup()
+
+
+class BluetoothSettingsScreen(BaseScreen):
+    """Bluetooth audio settings screen"""
+    def __init__(self, stdscr):
+        super().__init__(stdscr)
+        self.bt = BluetoothManager()
+        self.devices = []
+        self.selected = 0
+        self.scanning = False
+        self.status_message = ""
+        self.connected_device = None
+        self._refresh_devices()
+
+    def _refresh_devices(self):
+        """Refresh the device list"""
+        if not self.bt.bluetoothctl_available:
+            self.status_message = "Bluetooth not available"
+            return
+
+        # Get connected devices
+        connected = self.bt.get_connected_devices()
+        if connected:
+            self.connected_device = connected[0]  # First connected device
+
+        # Get all known devices
+        self.devices = self.bt.scan_devices(duration=0)  # Quick list of known devices
+        self.selected = min(self.selected, max(0, len(self.devices) - 1))
+
+    def draw(self):
+        self.stdscr.clear()
+        self.draw_status_bar("Bluetooth Audio", battery_percent=85)
+
+        if not self.bt.bluetoothctl_available:
+            self.stdscr.addstr(3, 2, "Bluetooth not available on this system", curses.A_BOLD)
+            self.draw_footer("BACKSPACE:Back  Q:Quit")
+            self.stdscr.refresh()
+            return
+
+        # Show connected device
+        y = 3
+        if self.connected_device:
+            mac, name = self.connected_device
+            self.stdscr.addstr(y, 2, "Connected:", curses.A_BOLD)
+            self.stdscr.addstr(y, 14, f"{name}", curses.color_pair(COLOR_PLAYING))
+            y += 1
+            self.stdscr.addstr(y, 2, f"({mac})", curses.color_pair(COLOR_NORMAL) | curses.A_DIM)
+            y += 2
+        else:
+            self.stdscr.addstr(y, 2, "Not connected to any device", curses.A_DIM)
+            y += 2
+
+        # Status message
+        if self.status_message:
+            self.stdscr.addstr(y, 2, self.status_message, curses.color_pair(COLOR_PLAYING))
+            y += 1
+
+        if self.scanning:
+            self.stdscr.addstr(y, 2, "Scanning for devices...", curses.A_BOLD)
+            y += 2
+
+        # Device list
+        self.stdscr.addstr(y, 2, "Available Devices:", curses.A_BOLD)
+        y += 2
+
+        if not self.devices:
+            self.stdscr.addstr(y, 4, "No devices found. Press 'S' to scan.", curses.A_DIM)
+        else:
+            for i, (mac, name, paired) in enumerate(self.devices):
+                if y >= self.height - 3:
+                    break
+
+                is_selected = i == self.selected
+                prefix = "> " if is_selected else "  "
+
+                # Show device name
+                status = ""
+                if self.bt.is_connected(mac):
+                    status = " [CONNECTED]"
+                    color = COLOR_PLAYING
+                elif paired:
+                    status = " [PAIRED]"
+                    color = COLOR_SELECTED
+                else:
+                    color = COLOR_NORMAL
+
+                display_text = f"{prefix}{name}{status}"
+                max_width = self.width - 6
+
+                if is_selected:
+                    self.stdscr.addstr(y, 4, truncate_to_width(display_text, max_width),
+                                     curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+                else:
+                    self.stdscr.addstr(y, 4, truncate_to_width(display_text, max_width),
+                                     curses.color_pair(color))
+
+                y += 1
+
+        self.draw_footer("↑/↓:Navigate  ENTER:Connect  S:Scan  D:Disconnect  BACKSPACE:Back")
+        self.stdscr.refresh()
+
+    def handle_input(self, key):
+        if key == curses.KEY_UP:
+            self.selected = max(0, self.selected - 1)
+
+        elif key == curses.KEY_DOWN:
+            self.selected = min(len(self.devices) - 1, self.selected + 1)
+
+        elif key == ord('s') or key == ord('S'):
+            # Scan for devices
+            self.scanning = True
+            self.status_message = "Scanning..."
+            self.draw()
+            self.stdscr.refresh()
+
+            self.devices = self.bt.scan_devices(duration=5)
+            self.scanning = False
+            self.status_message = f"Found {len(self.devices)} device(s)"
+            self.selected = 0
+
+        elif key == ord('d') or key == ord('D'):
+            # Disconnect current device
+            if self.connected_device:
+                mac, name = self.connected_device
+                self.status_message = f"Disconnecting from {name}..."
+                self.draw()
+                self.stdscr.refresh()
+
+                if self.bt.disconnect_device(mac):
+                    self.status_message = "Disconnected"
+                    self.connected_device = None
+                else:
+                    self.status_message = "Failed to disconnect"
+
+        elif key == ord('\n'):  # Enter - connect to selected device
+            if self.devices and 0 <= self.selected < len(self.devices):
+                mac, name, paired = self.devices[self.selected]
+
+                self.status_message = f"Connecting to {name}..."
+                self.draw()
+                self.stdscr.refresh()
+
+                # Pair if not paired
+                if not paired:
+                    self.status_message = "Pairing..."
+                    self.draw()
+                    self.stdscr.refresh()
+
+                    if not self.bt.pair_device(mac):
+                        self.status_message = "Pairing failed"
+                        return True
+
+                # Connect
+                if self.bt.connect_device(mac):
+                    self.status_message = f"Connected to {name}"
+                    self.connected_device = (mac, name)
+
+                    # Set as default audio sink
+                    self.bt.set_as_default_sink()
+                else:
+                    self.status_message = "Connection failed"
+
+                self._refresh_devices()
+
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            return "back"
+
+        elif key == ord('q') or key == ord('Q'):
+            return False
+
+        return True
+
+    # Button support
+    def on_up(self):
+        self.selected = max(0, self.selected - 1)
+        self.draw()
+
+    def on_down(self):
+        self.selected = min(len(self.devices) - 1, self.selected + 1)
+        self.draw()
+
+    def on_select(self):
+        # Simulate Enter key
+        self.handle_input(ord('\n'))
+        self.draw()
+
+    def on_back(self):
+        self._pending_action = "back"

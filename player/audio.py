@@ -19,62 +19,66 @@ class AudioPlayer:
         self.is_playing = False
         self.is_paused = False
         self.volume = 0.7
+        self.temp_file = None
 
         if self.audio_available:
             pygame.mixer.music.set_volume(self.volume)
         
     def play(self, stream_url, song_info):
         """Play a song from URL"""
+        # Set current_song immediately so UI shows info even if playback fails
+        self.current_song = song_info
+
         try:
             print(f"\n=== Attempting to play ===")
             print(f"Song: {song_info.get('title', 'Unknown')}")
-            
+
             if not self.audio_available:
                 print("⚠ Audio not available - simulating playback")
-                self.current_song = song_info
                 self.is_playing = True
                 self.is_paused = False
                 return True
-            
+
             # Stop current playback
             self.stop()
-            
+
             print("Downloading audio...")
             response = requests.get(stream_url, stream=True, timeout=10)
             response.raise_for_status()
-            
+
             print(f"Download complete. Size: {len(response.content)} bytes")
-            
+
             # Save to temporary file
             if self.temp_file and os.path.exists(self.temp_file):
                 os.remove(self.temp_file)
-            
+
             # Create temp file with appropriate extension
             suffix = '.mp3'  # We're requesting mp3 format
             fd, self.temp_file = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
-            
+
             with open(self.temp_file, 'wb') as f:
                 f.write(response.content)
-            
+
             print(f"Saved to: {self.temp_file}")
             print("Loading into pygame...")
             pygame.mixer.music.load(self.temp_file)
-            
+
             print("Starting playback...")
             pygame.mixer.music.play()
-            
-            self.current_song = song_info
+
             self.is_playing = True
             self.is_paused = False
-            
+
             print("✓ Playback started successfully!")
             return True
-            
+
         except Exception as e:
             print(f"✗ Error playing song: {e}")
             import traceback
             traceback.print_exc()
+            # Keep current_song set so UI can display info
+            self.is_playing = False
             return False
     
     def pause(self):

@@ -3,6 +3,17 @@ import tempfile
 import os
 import requests
 from pathlib import Path
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+try:
+    import ueberzug.lib.v0 as ueberzug
+    UEBERZUG_AVAILABLE = True
+except ImportError:
+    UEBERZUG_AVAILABLE = False
 
 class AlbumArtDisplay:
     """Display album art in terminal using chafa"""
@@ -11,6 +22,8 @@ class AlbumArtDisplay:
         self.temp_dir = tempfile.gettempdir()
         self.current_art_file = None
         self.chafa_available = self._check_chafa()
+        self.ueberzug_canvas = None
+        self.ueberzug_placement = None
 
     def _check_chafa(self):
         """Check if chafa is installed"""
@@ -96,8 +109,138 @@ class AlbumArtDisplay:
         output = self.display_in_terminal(image_path, width, height)
         return output.split('\n')
 
+    def get_ascii_art(self, image_path, width=40, height=20):
+        """Convert image to pure ASCII art (no ANSI codes) for curses
+
+        Args:
+            image_path: Path to image file
+            width: Width in characters
+            height: Height in characters
+
+        Returns:
+            List of strings representing the ASCII art
+        """
+        if not PIL_AVAILABLE:
+            return self._create_placeholder(width, height, "PIL not installed")
+
+        if not image_path or not os.path.exists(image_path):
+            return self._create_placeholder(width, height, "No album art")
+
+        try:
+            # Open and resize image
+            img = Image.open(image_path)
+            img = img.convert('L')  # Convert to grayscale
+
+            # Resize to fit ASCII dimensions
+            # Each character is roughly 2:1 (height:width) so adjust accordingly
+            img = img.resize((width, height), Image.Resampling.LANCZOS)
+
+            # ASCII characters from darkest to lightest
+            ascii_chars = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
+            ascii_chars = ascii_chars[::-1]  # Reverse for dark backgrounds
+
+            # Convert pixels to ASCII
+            lines = []
+            pixels = img.load()
+            for y in range(height):
+                line = ""
+                for x in range(width):
+                    # Get pixel brightness (0-255)
+                    brightness = pixels[x, y]
+                    # Map to ASCII character
+                    char_index = int((brightness / 255) * (len(ascii_chars) - 1))
+                    line += ascii_chars[char_index]
+                lines.append(line)
+
+            return lines
+
+        except Exception as e:
+            return self._create_placeholder(width, height, f"Error: {str(e)[:20]}")
+
+    def _create_placeholder(self, width, height, message="Album Art"):
+        """Create a simple placeholder box"""
+        lines = []
+        lines.append("┌" + "─" * (width - 2) + "┐")
+
+        # Add empty lines
+        for i in range(height - 2):
+            if i == height // 2 - 1:
+                # Center the message
+                padding = (width - len(message) - 2) // 2
+                line = "│" + " " * padding + message + " " * (width - len(message) - padding - 2) + "│"
+                lines.append(line)
+            else:
+                lines.append("│" + " " * (width - 2) + "│")
+
+        lines.append("└" + "─" * (width - 2) + "┘")
+        return lines
+
+    def init_ueberzug(self):
+        """Initialize ueberzug for real image display"""
+        if not UEBERZUG_AVAILABLE:
+            return False
+
+        try:
+            self.ueberzug_canvas = ueberzug.Canvas()
+            return True
+        except Exception as e:
+            return False
+
+    def show_image_ueberzug(self, image_path, x, y, width, height):
+        """Display real image using ueberzug overlay
+
+        Args:
+            image_path: Path to image file
+            x: X position in terminal (characters)
+            y: Y position in terminal (characters)
+            width: Width in characters
+            height: Height in characters
+        """
+        if not UEBERZUG_AVAILABLE or not self.ueberzug_canvas:
+            return False
+
+        try:
+            if self.ueberzug_placement:
+                # Remove old placement
+                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
+
+            # Create new placement
+            self.ueberzug_placement = self.ueberzug_canvas.create_placement(
+                'album_art',
+                x=x, y=y,
+                width=width, height=height,
+                path=image_path
+            )
+            self.ueberzug_placement.visibility = ueberzug.Visibility.VISIBLE
+            return True
+
+        except Exception as e:
+            return False
+
+    def hide_ueberzug(self):
+        """Hide the ueberzug image"""
+        if self.ueberzug_placement:
+            try:
+                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
+            except:
+                pass
+
     def cleanup(self):
-        """Clean up temporary files"""
+        """Clean up temporary files and ueberzug"""
+        # Clean up ueberzug
+        if self.ueberzug_placement:
+            try:
+                self.ueberzug_placement.visibility = ueberzug.Visibility.INVISIBLE
+            except:
+                pass
+
+        if self.ueberzug_canvas:
+            try:
+                self.ueberzug_canvas.__exit__(None, None, None)
+            except:
+                pass
+
+        # Clean up temp files
         if self.current_art_file and os.path.exists(self.current_art_file):
             try:
                 os.remove(self.current_art_file)

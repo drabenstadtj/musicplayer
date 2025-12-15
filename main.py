@@ -1,6 +1,6 @@
 import curses
 from player.navidrome import NavidromeClient
-from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen
+from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen, BluetoothSettingsScreen
 from ui.theme import init_colors
 from hardware.button_controller import ButtonController
 
@@ -73,6 +73,9 @@ class MusicPlayerApp:
                         break
                     elif result == "Playlists":
                         # TODO: implement playlists
+                        break
+                    elif result == "Settings":
+                        self.show_settings()
                         break
                     elif result:
                         menu.draw()
@@ -177,10 +180,37 @@ class MusicPlayerApp:
                 break
 
             now_playing.draw()
-    
+
+    def show_settings(self):
+        """Show settings menu"""
+        bt_settings = BluetoothSettingsScreen(self.stdscr)
+        self.current_screen = bt_settings
+        bt_settings.draw()
+
+        while self.running:
+            key = self.stdscr.getch()
+
+            result = None
+
+            if key != -1:
+                # Try button emulator first, only call handle_input if not handled
+                handled_by_buttons = self._handle_keyboard_input(key)
+                if not handled_by_buttons:
+                    result = bt_settings.handle_input(key)
+
+            # Check for button actions
+            if hasattr(bt_settings, '_pending_action') and bt_settings._pending_action:
+                result = bt_settings._pending_action
+                bt_settings._pending_action = None
+
+            if result == False or result == "back":
+                break
+
+            bt_settings.draw()
+
     def quit(self):
         self.running = False
-    
+
     def cleanup(self):
         self.button_controller.stop()
         # Clean up current screen if it has cleanup method
