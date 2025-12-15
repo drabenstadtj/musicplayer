@@ -33,7 +33,7 @@ class BluetoothManager:
         except Exception as e:
             return f"Error: {e}"
 
-    def scan_devices(self, duration=5):
+    def scan_devices(self, duration=10):
         """Scan for nearby Bluetooth devices
 
         Returns:
@@ -45,13 +45,20 @@ class BluetoothManager:
         devices = []
 
         try:
+            import time
+
+            # Make sure Bluetooth is powered on
+            subprocess.run(['bluetoothctl', 'power', 'on'],
+                         capture_output=True,
+                         timeout=2)
+            time.sleep(1)
+
             # Start scanning
             subprocess.Popen(['bluetoothctl', 'scan', 'on'],
                            stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
 
-            # Wait for scan
-            import time
+            print(f"Scanning for Bluetooth devices ({duration} seconds)...")
             time.sleep(duration)
 
             # Stop scanning
@@ -65,18 +72,23 @@ class BluetoothManager:
                                   text=True,
                                   timeout=2)
 
+            print(f"Raw devices output:\n{result.stdout}")
+
             # Parse devices
             # Format: "Device XX:XX:XX:XX:XX:XX Device Name"
             for line in result.stdout.split('\n'):
-                match = re.match(r'Device\s+([0-9A-F:]+)\s+(.+)', line)
+                # Try case-insensitive match for MAC addresses
+                match = re.match(r'Device\s+([0-9A-Fa-f:]+)\s+(.+)', line, re.IGNORECASE)
                 if match:
-                    mac = match.group(1)
-                    name = match.group(2)
-                    paired = self.is_paired(mac)
-                    devices.append((mac, name, paired))
+                    mac = match.group(1).upper()
+                    name = match.group(2).strip()
+                    if name:  # Only add if name is not empty
+                        paired = self.is_paired(mac)
+                        devices.append((mac, name, paired))
+                        print(f"Found device: {name} ({mac}) - Paired: {paired}")
 
         except Exception as e:
-            pass
+            print(f"Error scanning for devices: {e}")
 
         return devices
 

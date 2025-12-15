@@ -6,9 +6,14 @@ from io import BytesIO
 
 class AudioPlayer:
     def __init__(self):
+        # Configure SDL to use PulseAudio instead of ALSA
+        os.environ['SDL_AUDIODRIVER'] = 'pulseaudio'
+
         try:
+            # Initialize pygame with PulseAudio backend
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
             self.audio_available = True
+            print("✓ Audio initialized with PulseAudio backend")
         except pygame.error as e:
             print(f"Warning: Could not initialize audio device: {e}")
             print("Running in silent mode - no audio output available")
