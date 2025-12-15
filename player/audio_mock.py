@@ -5,7 +5,6 @@ class AudioPlayer:
         self.is_playing = False
         self.is_paused = False
         self.volume = 0.7
-        print("Mock audio player initialized (no sound)")
         
     def play(self, stream_url, song_info):
         print(f"Mock: Playing {song_info.get('title', 'Unknown')}")

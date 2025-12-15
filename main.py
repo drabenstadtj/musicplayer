@@ -1,10 +1,5 @@
 import curses
 from player.navidrome import NavidromeClient
-try:
-    from player.audio import AudioPlayer
-except:
-    from player.audio_mock import AudioPlayer
-    print("Using mock audio player (no sound)")
 from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen
 from ui.theme import init_colors
 
@@ -12,7 +7,14 @@ class MusicPlayerApp:
     def __init__(self, stdscr):
         self.stdscr = stdscr
         self.client = NavidromeClient()
-        self.audio = AudioPlayer()
+
+        # Try to initialize audio player, fall back to mock if no audio device
+        try:
+            from player.audio import AudioPlayer
+            self.audio = AudioPlayer()
+        except Exception as e:
+            from player.audio_mock import AudioPlayer
+            self.audio = AudioPlayer()
         
         # Setup curses
         curses.curs_set(0)  # Hide cursor
@@ -57,9 +59,9 @@ class MusicPlayerApp:
                     menu.draw()
     
     def show_albums(self):
-        # Fetch albums
-        albums = self.client.get_albums(limit=100)
-        
+        # Fetch all albums
+        albums = self.client.get_all_albums()
+
         if not albums:
             return
         

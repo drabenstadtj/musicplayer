@@ -1,5 +1,35 @@
 import curses
+import unicodedata
 from ui.theme import *
+
+def display_width(text):
+    """Calculate the display width of a string, accounting for wide characters"""
+    width = 0
+    for char in text:
+        if unicodedata.east_asian_width(char) in ('F', 'W'):
+            width += 2  # Full-width or Wide characters
+        else:
+            width += 1  # Normal width
+    return width
+
+def truncate_to_width(text, max_width):
+    """Truncate text to fit within max_width, accounting for wide characters"""
+    if display_width(text) <= max_width:
+        return text
+
+    current_width = 0
+    result = ""
+    ellipsis = "..."
+    ellipsis_width = display_width(ellipsis)
+
+    for char in text:
+        char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+        if current_width + char_width + ellipsis_width > max_width:
+            return result + ellipsis
+        result += char
+        current_width += char_width
+
+    return result
 
 class BaseScreen:
     """Base class for all screens"""
@@ -97,14 +127,55 @@ class AlbumBrowserScreen(BaseScreen):
             y = 4 + (i - start)
             if y >= self.height - 2:
                 break
-            
-            album_name = self.albums[i]['name'][:mid_x - 6]
-            if i == self.album_index and self.active_panel == "albums":
-                self.stdscr.addstr(y, 2, f"> {album_name}", 
+
+            # Format album display with right-justified artist
+            album = self.albums[i]
+            artist = album.get('artist', 'Unknown Artist')
+            album_name = album['name']
+
+            # Calculate available space
+            is_selected = i == self.album_index and self.active_panel == "albums"
+            prefix = "> " if is_selected else "  "
+            x_start = 2
+
+            # Calculate max width for content (accounting for display width, not string length)
+            # From x_start to separator (mid_x), leave 1 char margin before separator
+            max_line_width = mid_x - x_start - 1 - display_width(prefix)
+
+            # Reserve minimum space for album and artist (with reasonable split)
+            # Use 60% for album, 40% for artist
+            max_artist_width = int(max_line_width * 0.4)
+
+            # Truncate artist if too long (using display width)
+            artist = truncate_to_width(artist, max_artist_width)
+            artist_width = display_width(artist)
+
+            # Remaining space for album (accounting for 1 space between album and artist)
+            album_width = max_line_width - artist_width - 1
+
+            # Truncate album name if needed (using display width)
+            album_name = truncate_to_width(album_name, album_width)
+            album_display_width = display_width(album_name)
+
+            # Calculate padding needed (in spaces, which are always width 1)
+            padding_needed = max_line_width - album_display_width - artist_width - 1
+            if padding_needed < 0:
+                padding_needed = 0
+
+            album_padded = album_name + (" " * padding_needed)
+            display_text = f"{album_padded} {artist}"
+
+            # Final safety check - ensure total display width doesn't exceed limit
+            text_display_width = display_width(display_text)
+            if text_display_width > max_line_width:
+                # Truncate more aggressively if still too long
+                display_text = truncate_to_width(display_text, max_line_width)
+
+            if is_selected:
+                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
                                  curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
             else:
-                prefix = "  " if self.active_panel == "albums" else "  "
-                self.stdscr.addstr(y, 2, f"{prefix}{album_name}", 
+                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
                                  curses.color_pair(COLOR_NORMAL))
         
         # Draw vertical separator
@@ -119,13 +190,29 @@ class AlbumBrowserScreen(BaseScreen):
                 y = 4 + (i - start)
                 if y >= self.height - 2:
                     break
-                
-                song_name = self.songs[i]['title'][:mid_x - 6]
+
+                # Format: "Track# - Song Title - Artist"
+                song = self.songs[i]
+                track_num = song.get('track', '')
+                title = song.get('title', 'Unknown')
+                artist = song.get('artist', 'Unknown Artist')
+
+                # Build display text with track number if available
+                if track_num:
+                    display_text = f"{track_num}. {title} - {artist}"
+                else:
+                    display_text = f"{title} - {artist}"
+
+                # Truncate to fit panel width
+                max_width = mid_x - 6
+                if len(display_text) > max_width:
+                    display_text = display_text[:max_width - 3] + "..."
+
                 if i == self.song_index and self.active_panel == "songs":
-                    self.stdscr.addstr(y, mid_x + 2, f"> {song_name}", 
+                    self.stdscr.addstr(y, mid_x + 2, f"> {display_text}",
                                      curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
                 else:
-                    self.stdscr.addstr(y, mid_x + 4, song_name, 
+                    self.stdscr.addstr(y, mid_x + 4, display_text,
                                      curses.color_pair(COLOR_NORMAL))
         
         self.draw_footer("↑/↓:Navigate  ENTER:Select  BACKSPACE:Back")

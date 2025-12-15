@@ -1,7 +1,13 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 # Navidrome server configuration
-NAVIDROME_URL = "https://listen.wintermute.lol"
-NAVIDROME_USER = "jack"
-NAVIDROME_PASS = ""
+NAVIDROME_URL = os.getenv("NAVIDROME_URL", "https://listen.wintermute.lol")
+NAVIDROME_USER = os.getenv("NAVIDROME_USER", "jack")
+NAVIDROME_PASS = os.getenv("NAVIDROME_PASS", "")
 
 # Display settings
 SCREEN_WIDTH = 320
