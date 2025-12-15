@@ -1,7 +1,5 @@
 import curses
 from player.navidrome import NavidromeClient
-from player.local_library import LocalLibrary
-from player.audio import AudioPlayer
 from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen
 from ui.theme import init_colors
 from hardware.button_controller import ButtonController
@@ -12,14 +10,14 @@ class MusicPlayerApp:
         
         # Try to connect to Navidrome
         self.client = NavidromeClient()
-        self.navidrome_available = False
-        
-        # Setup local library
-        self.local_library = LocalLibrary()
-        
-        # Audio player (will switch based on source)
-        self.audio = None
-        self.local_audio = None
+
+        # Try to initialize audio player, fall back to mock if no audio device
+        try:
+            from player.audio import AudioPlayer
+            self.audio = AudioPlayer()
+        except Exception as e:
+            from player.audio_mock import AudioPlayer
+            self.audio = AudioPlayer()
         
         # Setup curses
         curses.curs_set(0)
@@ -110,24 +108,9 @@ class MusicPlayerApp:
                 self.button_controller.handler.handle_key(mapped_key)
     
     def show_albums(self):
-        """Show albums from both Navidrome and local library"""
-        albums = []
-        
-        # Get local albums
-        local_albums = self.local_library.get_albums()
-        for album in local_albums:
-            album['source'] = 'local'
-            album['name'] = f"📁 {album['name']}"  # Add icon for local
-        albums.extend(local_albums)
-        
-        # Get Navidrome albums if available
-        if self.navidrome_available:
-            navidrome_albums = self.client.get_albums(limit=100)
-            for album in navidrome_albums:
-                album['source'] = 'navidrome'
-                album['name'] = f"☁️ {album['name']}"  # Add icon for cloud
-            albums.extend(navidrome_albums)
-        
+        # Fetch all albums
+        albums = self.client.get_all_albums()
+
         if not albums:
             return
         

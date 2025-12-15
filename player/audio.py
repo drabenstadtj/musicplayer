@@ -6,29 +6,22 @@ from io import BytesIO
 
 class AudioPlayer:
     def __init__(self):
-        import os
-        
-        # Force pygame to use ALSA and the default device
-        os.environ['SDL_AUDIODRIVER'] = 'alsa'
-        os.environ['AUDIODEV'] = 'default'
-        
-        self.audio_available = False
+        try:
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+            self.audio_available = True
+        except pygame.error as e:
+            print(f"Warning: Could not initialize audio device: {e}")
+            print("Running in silent mode - no audio output available")
+            self.audio_available = False
+            raise  # Re-raise to trigger fallback to mock player
+
         self.current_song = None
         self.is_playing = False
         self.is_paused = False
         self.volume = 0.7
-        self.temp_file = None
-        
-        try:
-            print("Initializing pygame mixer with ALSA...")
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+
+        if self.audio_available:
             pygame.mixer.music.set_volume(self.volume)
-            print(f"✓ Pygame mixer initialized: {pygame.mixer.get_init()}")
-            self.audio_available = True
-        except Exception as e:
-            print(f"⚠ Audio not available: {e}")
-            print("⚠ Running in silent mode (no audio output)")
-            self.audio_available = False
         
     def play(self, stream_url, song_info):
         """Play a song from URL"""

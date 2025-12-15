@@ -60,17 +60,44 @@ class NavidromeClient:
             print(f"Connection failed: {e}")
             return False
     
-    def get_albums(self, limit=100):
-        """Get list of albums"""
+    def get_albums(self, limit=500, offset=0):
+        """Get list of albums
+
+        Args:
+            limit: Maximum number of albums to fetch (default 500)
+            offset: Number of albums to skip (default 0)
+        """
         try:
             response = self._make_request('getAlbumList2', {
                 'type': 'alphabeticalByName',
-                'size': limit
+                'size': limit,
+                'offset': offset
             })
             return response.get('albumList2', {}).get('album', [])
         except Exception as e:
             print(f"Error fetching albums: {e}")
             return []
+
+    def get_all_albums(self):
+        """Get all albums by fetching in batches"""
+        all_albums = []
+        batch_size = 500
+        offset = 0
+
+        while True:
+            batch = self.get_albums(limit=batch_size, offset=offset)
+            if not batch:
+                break
+
+            all_albums.extend(batch)
+
+            # If we got fewer albums than requested, we've reached the end
+            if len(batch) < batch_size:
+                break
+
+            offset += batch_size
+
+        return all_albums
     
     def get_playlists(self):
         """Get list of playlists"""
