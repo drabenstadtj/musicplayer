@@ -34,28 +34,14 @@ class MusicPlayerApp:
     
     def run(self):
         # Test Navidrome connection
-        self.navidrome_available = self.client.test_connection()
-        
-        if self.navidrome_available:
-            self.audio = AudioPlayer()
-            status = "Connected to Navidrome"
-        else:
-            status = "Offline - Local library only"
-        
-        # Scan local library
-        self.local_library.scan()
-        self.local_audio = AudioPlayer()
-        
-        # Show status briefly
-        self.stdscr.clear()
-        self.stdscr.addstr(0, 0, status)
-        self.stdscr.addstr(1, 0, f"Local songs: {len(self.local_library.songs)}")
-        self.stdscr.addstr(2, 0, "Press any key to continue...")
-        self.stdscr.refresh()
-        self.stdscr.timeout(-1)  # Wait for key
-        self.stdscr.getch()
-        self.stdscr.timeout(100)  # Back to non-blocking
-        
+        if not self.client.test_connection():
+            self.stdscr.clear()
+            self.stdscr.addstr(0, 0, "Failed to connect to Navidrome server!")
+            self.stdscr.addstr(1, 0, "Press any key to exit...")
+            self.stdscr.refresh()
+            self.stdscr.getch()
+            return
+
         # Start with main menu
         try:
             while self.running:
@@ -65,12 +51,14 @@ class MusicPlayerApp:
                 
                 while self.running:
                     key = self.stdscr.getch()
-                    
+
                     result = None
-                    
+
                     if key != -1:
-                        self._handle_keyboard_input(key)
-                        result = menu.handle_input(key)
+                        # Try button emulator first, only call handle_input if not handled
+                        handled_by_buttons = self._handle_keyboard_input(key)
+                        if not handled_by_buttons:
+                            result = menu.handle_input(key)
                     
                     # Check for button actions
                     if hasattr(menu, '_pending_action') and menu._pending_action:
@@ -92,8 +80,13 @@ class MusicPlayerApp:
             self.cleanup()
     
     def _handle_keyboard_input(self, key):
+        """Handle keyboard input via button emulator
+
+        Returns:
+            True if key was handled by button emulator, False otherwise
+        """
         from hardware.buttons import KeyboardButtonEmulator
-        
+
         if isinstance(self.button_controller.handler, KeyboardButtonEmulator):
             key_map = {
                 curses.KEY_UP: 'KEY_UP',
@@ -102,10 +95,12 @@ class MusicPlayerApp:
                 127: 'KEY_BACKSPACE',
                 10: '\n',
             }
-            
+
             mapped_key = key_map.get(key)
             if mapped_key:
                 self.button_controller.handler.handle_key(mapped_key)
+                return True
+        return False
     
     def show_albums(self):
         # Fetch all albums
@@ -113,92 +108,74 @@ class MusicPlayerApp:
 
         if not albums:
             return
-        
-        # Sort combined list
-        albums.sort(key=lambda a: a['name'])
-        
+
         browser = AlbumBrowserScreen(self.stdscr, albums)
         self.current_screen = browser
         browser.draw()
-        
+
         while self.running:
             key = self.stdscr.getch()
-            
+
             result = None
-            
+
             if key != -1:
-                self._handle_keyboard_input(key)
-                result = browser.handle_input(key)
-            
+                # Try button emulator first, only call handle_input if not handled
+                handled_by_buttons = self._handle_keyboard_input(key)
+                if not handled_by_buttons:
+                    result = browser.handle_input(key)
+
             # Check for button actions
             if hasattr(browser, '_pending_action') and browser._pending_action:
                 result = browser._pending_action
                 browser._pending_action = None
-            
+
             if result == False or result == "back":
                 break
             elif isinstance(result, tuple):
                 action, data = result
                 if action == "load_album":
-                    # Get the album source
-                    album = browser.albums[browser.album_index]
-                    
-                    if album['source'] == 'local':
-                        # Load from local library
-                        songs = self.local_library.get_album_songs(album['id'])
-                    else:
-                        # Load from Navidrome
-                        songs = self.client.get_album_songs(data)
-                    
-                    # Mark songs with their source
-                    for song in songs:
-                        song['source'] = album['source']
-                    
+                    # Load from Navidrome
+                    songs = self.client.get_album_songs(data)
                     browser.set_songs(songs)
-                    
+
                 elif action == "play_song":
                     self.play_song(data)
                     self.show_now_playing()
                     break
-            
+
             browser.draw()
     
     def play_song(self, song):
-        """Play a song from either local or Navidrome"""
-        if song.get('source') == 'local':
-            # Play local file
-            self.local_audio.play(song['path'], song)
-            self.current_player = self.local_audio
-        else:
-            # Play from Navidrome
-            stream_url = self.client.get_stream_url(song['id'])
-            if stream_url:
-                self.audio.play(stream_url, song)
-                self.current_player = self.audio
-    
+        """Start playing a song"""
+        stream_url = self.client.get_stream_url(song['id'])
+        if stream_url:
+            self.audio.play(stream_url, song)
+
     def show_now_playing(self):
         """Show now playing screen"""
-        now_playing = NowPlayingScreen(self.stdscr, self.current_player)
+        now_playing = NowPlayingScreen(self.stdscr, self.audio, self.client)
         self.current_screen = now_playing
         now_playing.draw()
-        
+
         while self.running:
             key = self.stdscr.getch()
-            
+
             result = None
-            
+
             if key != -1:
-                self._handle_keyboard_input(key)
-                result = now_playing.handle_input(key)
-            
+                # Try button emulator first, only call handle_input if not handled
+                handled_by_buttons = self._handle_keyboard_input(key)
+                if not handled_by_buttons:
+                    result = now_playing.handle_input(key)
+
             # Check for button actions
             if hasattr(now_playing, '_pending_action') and now_playing._pending_action:
                 result = now_playing._pending_action
                 now_playing._pending_action = None
-            
+
             if result == False or result == "back":
                 break
-            
+
             now_playing.draw()
     
     def quit(self):
@@ -206,6 +183,9 @@ class MusicPlayerApp:
     
     def cleanup(self):
         self.button_controller.stop()
+        # Clean up current screen if it has cleanup method
+        if self.current_screen and hasattr(self.current_screen, 'cleanup'):
+            self.current_screen.cleanup()
 
 def main(stdscr):
     app = MusicPlayerApp(stdscr)

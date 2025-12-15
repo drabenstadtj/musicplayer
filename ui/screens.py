@@ -1,6 +1,7 @@
 import curses
 import unicodedata
 from ui.theme import *
+from player.album_art import AlbumArtDisplay
 
 def display_width(text):
     """Calculate the display width of a string, accounting for wide characters"""
@@ -140,6 +141,12 @@ class AlbumBrowserScreen(BaseScreen):
         self.album_index = 0
         self.song_index = 0
         self.active_panel = "albums"  # "albums" or "songs"
+        self.album_scroll_offset = 0
+        self.artist_scroll_offset = 0
+        self.scroll_frame = 0
+        self.last_album_index = 0
+        self.last_song_index = 0
+        self.last_active_panel = "albums"
 
     def set_songs(self, songs):
         """Set songs for selected album"""
@@ -147,7 +154,77 @@ class AlbumBrowserScreen(BaseScreen):
         self.song_index = 0
         self.active_panel = "songs"
 
+    def _get_scrolled_text(self, text, max_width, is_selected, scroll_type='album'):
+        """Get scrolling text for selected items with truncated content
+
+        Args:
+            text: Text to scroll
+            max_width: Maximum display width
+            is_selected: Whether this item is selected
+            scroll_type: 'album' or 'artist' to use appropriate scroll offset
+        """
+        text_width = display_width(text)
+
+        if not is_selected or text_width <= max_width:
+            # Not selected or fits within width - no scrolling needed
+            return truncate_to_width(text, max_width)
+
+        # Get and increment the appropriate scroll offset
+        if scroll_type == 'album':
+            self.album_scroll_offset = (self.album_scroll_offset + 1) % (text_width + 3)
+            scroll_offset = self.album_scroll_offset
+        else:  # artist
+            self.artist_scroll_offset = (self.artist_scroll_offset + 1) % (text_width + 3)
+            scroll_offset = self.artist_scroll_offset
+
+        # Create circular scrolling effect
+        # Add padding between end and start
+        scrolling_text = text + "   " + text
+
+        # Calculate starting position in the scrolling text
+        start_offset = scroll_offset
+
+        # Extract visible portion
+        visible_text = ""
+        current_width = 0
+        char_index = 0
+
+        # Skip to starting offset
+        temp_offset = 0
+        while temp_offset < start_offset and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            temp_offset += char_width
+            char_index += 1
+
+        # Collect visible characters
+        while current_width < max_width and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            if current_width + char_width > max_width:
+                break
+            visible_text += char
+            current_width += char_width
+            char_index += 1
+
+        return visible_text
+
     def draw(self):
+        # Reset scroll if selection changed (check both index AND panel)
+        selection_changed = (
+            self.album_index != self.last_album_index or
+            self.song_index != self.last_song_index or
+            self.active_panel != self.last_active_panel
+        )
+
+        if selection_changed:
+            self.album_scroll_offset = 0
+            self.artist_scroll_offset = 0
+            self.scroll_frame = 0
+            self.last_album_index = self.album_index
+            self.last_song_index = self.song_index
+            self.last_active_panel = self.active_panel
+
         self.stdscr.clear()
         self.draw_status_bar("Albums", battery_percent=85)
 
@@ -179,30 +256,43 @@ class AlbumBrowserScreen(BaseScreen):
             # Reserve minimum space for album and artist (with reasonable split)
             # Use 60% for album, 40% for artist
             max_artist_width = int(max_line_width * 0.4)
+            album_width = max_line_width - max_artist_width - 1
 
-            # Truncate artist if too long (using display width)
-            artist = truncate_to_width(artist, max_artist_width)
-            artist_width = display_width(artist)
+            # Scroll album and artist separately if selected and truncated
+            if is_selected:
+                # Check if album needs scrolling
+                if display_width(album_name) > album_width:
+                    album_display = self._get_scrolled_text(album_name, album_width, True, 'album')
+                else:
+                    album_display = truncate_to_width(album_name, album_width)
 
-            # Remaining space for album (accounting for 1 space between album and artist)
-            album_width = max_line_width - artist_width - 1
+                # Check if artist needs scrolling
+                if display_width(artist) > max_artist_width:
+                    artist_display = self._get_scrolled_text(artist, max_artist_width, True, 'artist')
+                else:
+                    artist_display = truncate_to_width(artist, max_artist_width)
 
-            # Truncate album name if needed (using display width)
-            album_name = truncate_to_width(album_name, album_width)
-            album_display_width = display_width(album_name)
+                album_display_width = display_width(album_display)
+                artist_width = display_width(artist_display)
+            else:
+                # Not selected - just truncate
+                artist_display = truncate_to_width(artist, max_artist_width)
+                artist_width = display_width(artist_display)
+
+                album_display = truncate_to_width(album_name, album_width)
+                album_display_width = display_width(album_display)
 
             # Calculate padding needed (in spaces, which are always width 1)
             padding_needed = max_line_width - album_display_width - artist_width - 1
             if padding_needed < 0:
                 padding_needed = 0
 
-            album_padded = album_name + (" " * padding_needed)
-            display_text = f"{album_padded} {artist}"
+            album_padded = album_display + (" " * padding_needed)
+            display_text = f"{album_padded} {artist_display}"
 
             # Final safety check - ensure total display width doesn't exceed limit
             text_display_width = display_width(display_text)
             if text_display_width > max_line_width:
-                # Truncate more aggressively if still too long
                 display_text = truncate_to_width(display_text, max_line_width)
 
             if is_selected:
@@ -315,9 +405,13 @@ class AlbumBrowserScreen(BaseScreen):
 
 class NowPlayingScreen(BaseScreen):
     """Now playing screen"""
-    def __init__(self, stdscr, audio_player):
+    def __init__(self, stdscr, audio_player, navidrome_client=None):
         super().__init__(stdscr)
         self.player = audio_player
+        self.client = navidrome_client
+        self.album_art = AlbumArtDisplay()
+        self.current_art_path = None
+        self.last_song_id = None  # Track which song we downloaded art for
 
     def draw(self):
         self.stdscr.clear()
@@ -326,31 +420,71 @@ class NowPlayingScreen(BaseScreen):
         if self.player.current_song:
             song = self.player.current_song
 
-            # Song info centered
-            center_y = self.height // 2
-
             title = song.get('title', 'Unknown')
             artist = song.get('artist', 'Unknown Artist')
             album = song.get('album', 'Unknown Album')
 
-            self.stdscr.addstr(center_y - 2, 2, "Title:", curses.A_BOLD)
-            self.stdscr.addstr(center_y - 2, 10, title[:self.width - 12],
+            # Download album art only once per song
+            song_id = song.get('id')
+            if self.client and song_id and song_id != self.last_song_id:
+                # Try different fields that might contain cover art ID
+                cover_art_id = song.get('coverArt') or song.get('albumId') or song_id
+                if cover_art_id:
+                    try:
+                        cover_art_url = self.client.get_cover_art_url(cover_art_id, size=200)
+                        if cover_art_url:
+                            # Download and cache the album art
+                            art_path = self.album_art.download_cover_art(cover_art_url, cover_art_id)
+                            if art_path:
+                                self.current_art_path = art_path
+                    except Exception as e:
+                        # Silently fail - album art is optional
+                        pass
+                    finally:
+                        self.last_song_id = song_id
+
+            # Display album art on the left side if available
+            art_width = 40
+            art_height = 20
+            info_x_offset = 2
+
+            if self.current_art_path and self.album_art.chafa_available:
+                # Render album art
+                art_lines = self.album_art.get_ansi_art(self.current_art_path, art_width, art_height)
+                start_y = 3
+                for i, line in enumerate(art_lines):
+                    if start_y + i >= self.height - 2:
+                        break
+                    try:
+                        self.stdscr.addstr(start_y + i, info_x_offset, line[:art_width])
+                    except:
+                        pass  # Skip lines that don't fit
+
+                # Song info on the right side of album art
+                info_x_offset = art_width + 4
+
+            # Song info
+            info_y = 3
+            max_text_width = self.width - info_x_offset - 2
+
+            self.stdscr.addstr(info_y, info_x_offset, "Title:", curses.A_BOLD)
+            self.stdscr.addstr(info_y + 1, info_x_offset, truncate_to_width(title, max_text_width),
                              curses.color_pair(COLOR_PLAYING))
 
-            self.stdscr.addstr(center_y - 1, 2, "Artist:", curses.A_BOLD)
-            self.stdscr.addstr(center_y - 1, 10, artist[:self.width - 12])
+            self.stdscr.addstr(info_y + 3, info_x_offset, "Artist:", curses.A_BOLD)
+            self.stdscr.addstr(info_y + 4, info_x_offset, truncate_to_width(artist, max_text_width))
 
-            self.stdscr.addstr(center_y, 2, "Album:", curses.A_BOLD)
-            self.stdscr.addstr(center_y, 10, album[:self.width - 12])
+            self.stdscr.addstr(info_y + 6, info_x_offset, "Album:", curses.A_BOLD)
+            self.stdscr.addstr(info_y + 7, info_x_offset, truncate_to_width(album, max_text_width))
 
             # Status
             status = f"{SYMBOL_PLAYING} PLAYING" if not self.player.is_paused else f"{SYMBOL_PAUSED} PAUSED"
-            self.stdscr.addstr(center_y + 2, 2, status,
+            self.stdscr.addstr(info_y + 10, info_x_offset, status,
                              curses.color_pair(COLOR_PLAYING) | curses.A_BOLD)
 
             # Volume
             vol_percent = int(self.player.volume * 100)
-            self.stdscr.addstr(center_y + 3, 2, f"Volume: {vol_percent}%")
+            self.stdscr.addstr(info_y + 11, info_x_offset, f"Volume: {vol_percent}%")
         else:
             self.stdscr.addstr(self.height // 2, 2, "No song playing")
 
@@ -385,3 +519,8 @@ class NowPlayingScreen(BaseScreen):
     
     def on_back(self):
         self._pending_action = "back"
+
+    def cleanup(self):
+        """Clean up album art temporary files"""
+        if self.album_art:
+            self.album_art.cleanup()
