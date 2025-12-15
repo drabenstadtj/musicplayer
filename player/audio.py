@@ -44,6 +44,9 @@ class AudioPlayer:
                 timeout=2
             )
 
+            print("Available sinks:")
+            print(result.stdout)
+
             # Look for bluez sink
             for line in result.stdout.splitlines():
                 parts = line.split()
@@ -53,7 +56,13 @@ class AudioPlayer:
                     # Set as default
                     subprocess.run(['pactl', 'set-default-sink', bluez_sink], timeout=2)
                     print(f"Set {bluez_sink} as default audio sink")
+
+                    # Set the PULSE_SINK environment variable for this process
+                    os.environ['PULSE_SINK'] = bluez_sink
+                    print(f"Set PULSE_SINK environment variable to {bluez_sink}")
                     return
+
+            print("No Bluetooth sink found - using default")
         except Exception as e:
             print(f"Could not set Bluetooth sink: {e}")
         
@@ -104,6 +113,18 @@ class AudioPlayer:
             self.is_paused = False
 
             print("✓ Playback started successfully!")
+
+            # Check if audio stream was created
+            import time
+            time.sleep(0.5)  # Give PulseAudio time to create the stream
+            result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'],
+                                  capture_output=True, text=True, timeout=2)
+            if result.stdout.strip():
+                print(f"Audio stream active: {result.stdout.strip()}")
+            else:
+                print("WARNING: No audio stream detected! pygame might not be outputting audio.")
+                print("Try: pactl list sink-inputs")
+
             return True
 
         except Exception as e:
