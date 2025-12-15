@@ -7,6 +7,10 @@ from io import BytesIO
 
 class AudioPlayer:
     def __init__(self):
+        # Open log file for debugging
+        self.logfile = open('/tmp/musicplayer_audio.log', 'a')
+        self._log("=== AudioPlayer Init ===")
+
         # Configure SDL to use PulseAudio instead of ALSA
         os.environ['SDL_AUDIODRIVER'] = 'pulseaudio'
 
@@ -17,10 +21,10 @@ class AudioPlayer:
             # Initialize pygame with PulseAudio backend
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
             self.audio_available = True
-            print("✓ Audio initialized with PulseAudio backend")
+            self._log("✓ Audio initialized with PulseAudio backend")
         except pygame.error as e:
-            print(f"Warning: Could not initialize audio device: {e}")
-            print("Running in silent mode - no audio output available")
+            self._log(f"Warning: Could not initialize audio device: {e}")
+            self._log("Running in silent mode - no audio output available")
             self.audio_available = False
             raise  # Re-raise to trigger fallback to mock player
 
@@ -33,6 +37,11 @@ class AudioPlayer:
         if self.audio_available:
             pygame.mixer.music.set_volume(self.volume)
 
+    def _log(self, message):
+        """Write to log file"""
+        self.logfile.write(f"{message}\n")
+        self.logfile.flush()
+
     def _ensure_bluetooth_sink(self):
         """Ensure Bluetooth sink is set as default if available"""
         try:
@@ -44,27 +53,27 @@ class AudioPlayer:
                 timeout=2
             )
 
-            print("Available sinks:")
-            print(result.stdout)
+            self._log("Available sinks:")
+            self._log(result.stdout)
 
             # Look for bluez sink
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if len(parts) >= 2 and 'bluez' in parts[1].lower():
                     bluez_sink = parts[1]
-                    print(f"Found Bluetooth sink: {bluez_sink}")
+                    self._log(f"Found Bluetooth sink: {bluez_sink}")
                     # Set as default
                     subprocess.run(['pactl', 'set-default-sink', bluez_sink], timeout=2)
-                    print(f"Set {bluez_sink} as default audio sink")
+                    self._log(f"Set {bluez_sink} as default audio sink")
 
                     # Set the PULSE_SINK environment variable for this process
                     os.environ['PULSE_SINK'] = bluez_sink
-                    print(f"Set PULSE_SINK environment variable to {bluez_sink}")
+                    self._log(f"Set PULSE_SINK environment variable to {bluez_sink}")
                     return
 
-            print("No Bluetooth sink found - using default")
+            self._log("No Bluetooth sink found - using default")
         except Exception as e:
-            print(f"Could not set Bluetooth sink: {e}")
+            self._log(f"Could not set Bluetooth sink: {e}")
         
     def play(self, stream_url, song_info):
         """Play a song from URL"""
@@ -72,11 +81,11 @@ class AudioPlayer:
         self.current_song = song_info
 
         try:
-            print(f"\n=== Attempting to play ===")
-            print(f"Song: {song_info.get('title', 'Unknown')}")
+            self._log(f"\n=== Attempting to play ===")
+            self._log(f"Song: {song_info.get('title', 'Unknown')}")
 
             if not self.audio_available:
-                print("⚠ Audio not available - simulating playback")
+                self._log("⚠ Audio not available - simulating playback")
                 self.is_playing = True
                 self.is_paused = False
                 return True
@@ -84,11 +93,11 @@ class AudioPlayer:
             # Stop current playback
             self.stop()
 
-            print("Downloading audio...")
+            self._log("Downloading audio...")
             response = requests.get(stream_url, stream=True, timeout=10)
             response.raise_for_status()
 
-            print(f"Download complete. Size: {len(response.content)} bytes")
+            self._log(f"Download complete. Size: {len(response.content)} bytes")
 
             # Save to temporary file
             if self.temp_file and os.path.exists(self.temp_file):
@@ -102,17 +111,17 @@ class AudioPlayer:
             with open(self.temp_file, 'wb') as f:
                 f.write(response.content)
 
-            print(f"Saved to: {self.temp_file}")
-            print("Loading into pygame...")
+            self._log(f"Saved to: {self.temp_file}")
+            self._log("Loading into pygame...")
             pygame.mixer.music.load(self.temp_file)
 
-            print("Starting playback...")
+            self._log("Starting playback...")
             pygame.mixer.music.play()
 
             self.is_playing = True
             self.is_paused = False
 
-            print("✓ Playback started successfully!")
+            self._log("✓ Playback started successfully!")
 
             # Check if audio stream was created
             import time
@@ -120,17 +129,17 @@ class AudioPlayer:
             result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'],
                                   capture_output=True, text=True, timeout=2)
             if result.stdout.strip():
-                print(f"Audio stream active: {result.stdout.strip()}")
+                self._log(f"Audio stream active: {result.stdout.strip()}")
             else:
-                print("WARNING: No audio stream detected! pygame might not be outputting audio.")
-                print("Try: pactl list sink-inputs")
+                self._log("WARNING: No audio stream detected! pygame might not be outputting audio.")
+                self._log("Try: pactl list sink-inputs")
 
             return True
 
         except Exception as e:
-            print(f"✗ Error playing song: {e}")
+            self._log(f"✗ Error playing song: {e}")
             import traceback
-            traceback.print_exc()
+            self._log(traceback.format_exc())
             # Keep current_song set so UI can display info
             self.is_playing = False
             return False
