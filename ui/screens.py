@@ -444,27 +444,9 @@ class NowPlayingScreen(BaseScreen):
                     finally:
                         self.last_song_id = song_id
 
-            # Display album art on the left side if available
-            art_width = 40
-            art_height = 20
+            # Don't display album art for now (too big)
+            # TODO: Add album art display when screen size is optimized
             info_x_offset = 2
-
-            if self.current_art_path:
-                # Display ASCII art
-                art_lines = self.album_art.get_ascii_art(self.current_art_path, art_width, art_height)
-                start_y = 3
-                for i, line in enumerate(art_lines):
-                    if start_y + i >= self.height - 2:
-                        break
-                    try:
-                        # Truncate line to fit width
-                        display_line = line[:art_width] if len(line) > art_width else line
-                        self.stdscr.addstr(start_y + i, info_x_offset, display_line)
-                    except:
-                        pass  # Skip lines that don't fit
-
-                # Song info on the right side of album art
-                info_x_offset = art_width + 4
 
             # Song info
             info_y = 3
