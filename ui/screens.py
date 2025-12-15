@@ -412,6 +412,7 @@ class NowPlayingScreen(BaseScreen):
         self.album_art = AlbumArtDisplay()
         self.current_art_path = None
         self.last_song_id = None  # Track which song we downloaded art for
+        self.use_ueberzug = self.album_art.init_ueberzug()  # Try to use real images
 
     def draw(self):
         self.stdscr.clear()
@@ -448,17 +449,35 @@ class NowPlayingScreen(BaseScreen):
             art_height = 20
             info_x_offset = 2
 
-            if self.current_art_path and self.album_art.chafa_available:
-                # Render album art
-                art_lines = self.album_art.get_ansi_art(self.current_art_path, art_width, art_height)
-                start_y = 3
-                for i, line in enumerate(art_lines):
-                    if start_y + i >= self.height - 2:
-                        break
-                    try:
-                        self.stdscr.addstr(start_y + i, info_x_offset, line[:art_width])
-                    except:
-                        pass  # Skip lines that don't fit
+            if self.current_art_path:
+                if self.use_ueberzug:
+                    # Use ueberzug for real image overlay
+                    self.album_art.show_image_ueberzug(
+                        self.current_art_path,
+                        x=info_x_offset,
+                        y=3,
+                        width=art_width,
+                        height=art_height
+                    )
+                    # Draw a placeholder box where the image will be
+                    for i in range(art_height):
+                        try:
+                            self.stdscr.addstr(3 + i, info_x_offset, " " * art_width)
+                        except:
+                            pass
+                else:
+                    # Fallback to ASCII art
+                    art_lines = self.album_art.get_ascii_art(self.current_art_path, art_width, art_height)
+                    start_y = 3
+                    for i, line in enumerate(art_lines):
+                        if start_y + i >= self.height - 2:
+                            break
+                        try:
+                            # Truncate line to fit width
+                            display_line = line[:art_width] if len(line) > art_width else line
+                            self.stdscr.addstr(start_y + i, info_x_offset, display_line)
+                        except:
+                            pass  # Skip lines that don't fit
 
                 # Song info on the right side of album art
                 info_x_offset = art_width + 4
