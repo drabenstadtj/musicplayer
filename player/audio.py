@@ -1,9 +1,7 @@
-import pygame
-import requests
-import tempfile
+import vlc
 import os
 import subprocess
-from io import BytesIO
+import time
 
 class AudioPlayer:
     def __init__(self):
@@ -11,18 +9,16 @@ class AudioPlayer:
         self.logfile = open('/tmp/musicplayer_audio.log', 'a')
         self._log("=== AudioPlayer Init ===")
 
-        # Configure SDL to use PulseAudio instead of ALSA
-        os.environ['SDL_AUDIODRIVER'] = 'pulseaudio'
-
-        # Try to set Bluetooth as default sink before initializing pygame
+        # Try to set Bluetooth as default sink before initializing VLC
         self._ensure_bluetooth_sink()
 
         try:
-            # Initialize pygame with PulseAudio backend
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+            # Create VLC instance with PulseAudio output
+            self.instance = vlc.Instance('--aout=pulse', '--verbose=0')
+            self.player = self.instance.media_player_new()
             self.audio_available = True
-            self._log("✓ Audio initialized with PulseAudio backend")
-        except pygame.error as e:
+            self._log("✓ Audio initialized with VLC + PulseAudio backend")
+        except Exception as e:
             self._log(f"Warning: Could not initialize audio device: {e}")
             self._log("Running in silent mode - no audio output available")
             self.audio_available = False
@@ -31,11 +27,10 @@ class AudioPlayer:
         self.current_song = None
         self.is_playing = False
         self.is_paused = False
-        self.volume = 0.7
-        self.temp_file = None
+        self.volume = 70  # VLC uses 0-100 scale
 
         if self.audio_available:
-            pygame.mixer.music.set_volume(self.volume)
+            self.player.audio_set_volume(self.volume)
 
     def _log(self, message):
         """Write to log file"""
@@ -74,15 +69,16 @@ class AudioPlayer:
             self._log("No Bluetooth sink found - using default")
         except Exception as e:
             self._log(f"Could not set Bluetooth sink: {e}")
-        
+
     def play(self, stream_url, song_info):
-        """Play a song from URL"""
+        """Stream a song from URL"""
         # Set current_song immediately so UI shows info even if playback fails
         self.current_song = song_info
 
         try:
-            self._log(f"\n=== Attempting to play ===")
+            self._log(f"\n=== Attempting to stream ===")
             self._log(f"Song: {song_info.get('title', 'Unknown')}")
+            self._log(f"URL: {stream_url}")
 
             if not self.audio_available:
                 self._log("⚠ Audio not available - simulating playback")
@@ -93,77 +89,56 @@ class AudioPlayer:
             # Stop current playback
             self.stop()
 
-            self._log("Downloading audio...")
-            response = requests.get(stream_url, stream=True, timeout=10)
-            response.raise_for_status()
+            self._log("Creating media from URL...")
+            media = self.instance.media_new(stream_url)
+            self.player.set_media(media)
 
-            self._log(f"Download complete. Size: {len(response.content)} bytes")
-
-            # Save to temporary file
-            if self.temp_file and os.path.exists(self.temp_file):
-                os.remove(self.temp_file)
-
-            # Create temp file with appropriate extension
-            suffix = '.mp3'  # We're requesting mp3 format
-            fd, self.temp_file = tempfile.mkstemp(suffix=suffix)
-            os.close(fd)
-
-            with open(self.temp_file, 'wb') as f:
-                f.write(response.content)
-
-            self._log(f"Saved to: {self.temp_file}")
-            self._log("Loading into pygame...")
-            pygame.mixer.music.load(self.temp_file)
-
-            self._log("Starting playback...")
-            pygame.mixer.music.play()
+            self._log("Starting stream playback...")
+            self.player.play()
 
             self.is_playing = True
             self.is_paused = False
 
-            self._log("✓ Playback started successfully!")
+            self._log("✓ Stream started successfully!")
 
             # Check if audio stream was created
-            import time
             time.sleep(0.5)  # Give PulseAudio time to create the stream
             result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'],
                                   capture_output=True, text=True, timeout=2)
             if result.stdout.strip():
                 self._log(f"Audio stream active: {result.stdout.strip()}")
             else:
-                self._log("WARNING: No audio stream detected! pygame might not be outputting audio.")
+                self._log("WARNING: No audio stream detected! VLC might not be outputting audio.")
                 self._log("Try: pactl list sink-inputs")
 
             return True
 
         except Exception as e:
-            self._log(f"✗ Error playing song: {e}")
+            self._log(f"✗ Error streaming song: {e}")
             import traceback
             self._log(traceback.format_exc())
             # Keep current_song set so UI can display info
             self.is_playing = False
             return False
-    
+
     def pause(self):
         """Pause playback"""
         if not self.audio_available:
             self.is_paused = True
-            print("⚠ Simulated pause")
             return
-            
+
         if self.is_playing and not self.is_paused:
-            pygame.mixer.music.pause()
+            self.player.pause()
             self.is_paused = True
 
     def unpause(self):
         """Resume playback"""
         if not self.audio_available:
             self.is_paused = False
-            print("⚠ Simulated unpause")
             return
-            
+
         if self.is_playing and self.is_paused:
-            pygame.mixer.music.unpause()
+            self.player.pause()  # VLC's pause() toggles, so call again to unpause
             self.is_paused = False
 
     def toggle_pause(self):
@@ -176,47 +151,44 @@ class AudioPlayer:
     def stop(self):
         """Stop playback"""
         if self.audio_available:
-            pygame.mixer.music.stop()
-        else:
-            print("⚠ Simulated stop")
-            
+            self.player.stop()
+
         self.is_playing = False
         self.is_paused = False
-        
-        # Clean up temp file
-        if self.temp_file and os.path.exists(self.temp_file):
-            try:
-                os.remove(self.temp_file)
-            except:
-                pass
-            self.temp_file = None
 
     def set_volume(self, volume):
         """Set volume (0.0 to 1.0)"""
-        self.volume = max(0.0, min(1.0, volume))
+        # Convert 0.0-1.0 to 0-100 for VLC
+        self.volume = max(0, min(100, int(volume * 100)))
         if self.audio_available:
-            pygame.mixer.music.set_volume(self.volume)
-        else:
-            print(f"⚠ Simulated volume: {int(self.volume * 100)}%")
+            self.player.audio_set_volume(self.volume)
 
     def volume_up(self, step=0.1):
         """Increase volume"""
-        self.set_volume(self.volume + step)
+        current = self.volume / 100.0
+        self.set_volume(current + step)
 
     def volume_down(self, step=0.1):
         """Decrease volume"""
-        self.set_volume(self.volume - step)
+        current = self.volume / 100.0
+        self.set_volume(current - step)
 
     def get_position(self):
         """Get current playback position in seconds"""
         if not self.audio_available:
             return 0
         if self.is_playing:
-            return pygame.mixer.music.get_pos() / 1000.0
+            # VLC returns position in milliseconds
+            pos = self.player.get_time()
+            return pos / 1000.0 if pos >= 0 else 0
         return 0
 
     def is_finished(self):
         """Check if current song has finished"""
         if not self.audio_available:
             return False
-        return self.is_playing and not pygame.mixer.music.get_busy()
+        if self.is_playing:
+            state = self.player.get_state()
+            # VLC states: 0=NothingSpecial, 1=Opening, 2=Buffering, 3=Playing, 4=Paused, 5=Stopped, 6=Ended, 7=Error
+            return state == 6  # vlc.State.Ended
+        return False

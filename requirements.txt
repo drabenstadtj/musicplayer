@@ -1,5 +1,5 @@
 mutagen==1.47.0
-pygame==2.6.1
 python-dotenv==1.2.1
 Requests==2.32.5
 Pillow>=10.0.0
+python-vlc>=3.0.0
