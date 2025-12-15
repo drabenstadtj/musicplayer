@@ -13,8 +13,17 @@ class AudioPlayer:
         self._ensure_bluetooth_sink()
 
         try:
-            # Create VLC instance with PulseAudio output
-            self.instance = vlc.Instance('--aout=pulse', '--verbose=0')
+            # Create VLC instance with PulseAudio output and optimized buffering
+            # Increase network caching to reduce choppy playback
+            # Increase audio buffer for smoother output
+            self.instance = vlc.Instance(
+                '--aout=pulse',
+                '--verbose=0',
+                '--network-caching=3000',     # 3 second network cache
+                '--audio-buffer=500',          # 500ms audio buffer
+                '--clock-jitter=1000',         # Allow 1s clock jitter
+                '--audio-resampler=soxr',      # High quality resampler
+            )
             self.player = self.instance.media_player_new()
             self.audio_available = True
             self._log("✓ Audio initialized with VLC + PulseAudio backend")

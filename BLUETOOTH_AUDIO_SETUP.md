@@ -265,11 +265,30 @@ For best audio quality on Bluetooth:
    - HSP/HFP = phone headset (mono, low quality)
    - The app automatically uses A2DP
 
+4. **If you get choppy audio or static:**
+
+   Edit `/etc/pulse/daemon.conf` and uncomment/set these values:
+   ```
+   default-fragment-size-msec = 25
+   resample-method = soxr-vhq
+   ```
+
+   Then restart PulseAudio:
+   ```bash
+   pulseaudio -k
+   pulseaudio --start
+   ```
+
+5. **Check WiFi interference:**
+   - Both WiFi and Bluetooth use 2.4GHz band
+   - If possible, use 5GHz WiFi or ethernet
+   - Or disable WiFi: `sudo ifconfig wlan0 down`
+
 ## Common Issues
 
 | Problem | Solution |
 |---------|----------|
-| Choppy audio | Increase pygame buffer: `pygame.mixer.init(buffer=8192)` in [player/audio.py](player/audio.py:14) |
+| Choppy audio / static | VLC buffer settings in [player/audio.py](player/audio.py:22), or tune PulseAudio (see Performance Tips #4) |
 | Connection drops | Move Pi closer to headphones, reduce WiFi interference |
 | Scan finds 0 devices | Headphones in pairing mode? Bluetooth service running? |
 | No audio | Check PulseAudio running, Bluetooth connected, default sink set |
