@@ -59,18 +59,22 @@ class BaseScreen:
         footer_y = self.height - 1
         self.stdscr.addstr(footer_y, 0, " " * (self.width - 1))
 
-        # Calculate spacing for 4 buttons evenly distributed
-        button_width = self.width // 4
-
         labels = [btn1, btn2, btn3, btn4]
+
+        # Calculate positions to distribute evenly across the width
+        # Place at 1/8, 3/8, 5/8, 7/8 of width (centered in each quarter)
+        positions = [
+            self.width // 8,
+            (self.width * 3) // 8,
+            (self.width * 5) // 8,
+            (self.width * 7) // 8
+        ]
 
         for i, label in enumerate(labels):
             if label:  # Only show if label is provided
-                x_pos = i * button_width + 2
-                # Truncate if too long for the section
-                max_len = button_width - 4
-                if len(label) > max_len:
-                    label = label[:max_len-2] + ".."
+                # Center the label at its position
+                x_pos = positions[i] - len(label) // 2
+                x_pos = max(0, min(x_pos, self.width - len(label) - 1))
                 try:
                     self.stdscr.addstr(footer_y, x_pos, label)
                 except:
