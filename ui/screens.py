@@ -50,11 +50,11 @@ class BaseScreen:
             self.stdscr.addstr(0, self.width - len(battery_text) - 2,
                              battery_text, curses.color_pair(COLOR_STATUS))
 
-    def draw_footer(self, up_label="", down_label="", select_label="", back_label=""):
+    def draw_footer(self, btn1="", btn2="", btn3="", btn4=""):
         """Draw footer with evenly spaced GPIO button labels
 
-        Displays 4 buttons (UP, DOWN, SELECT, BACK) evenly spaced across the bottom
-        to match the physical GPIO button layout.
+        Displays 4 button actions evenly spaced across the bottom
+        to match the physical GPIO button layout (left to right).
         """
         footer_y = self.height - 1
         self.stdscr.addstr(footer_y, 0, " " * (self.width - 1))
@@ -62,23 +62,17 @@ class BaseScreen:
         # Calculate spacing for 4 buttons evenly distributed
         button_width = self.width // 4
 
-        buttons = [
-            ("UP", up_label),
-            ("DOWN", down_label),
-            ("SELECT", select_label),
-            ("BACK", back_label)
-        ]
+        labels = [btn1, btn2, btn3, btn4]
 
-        for i, (btn_name, label) in enumerate(buttons):
+        for i, label in enumerate(labels):
             if label:  # Only show if label is provided
                 x_pos = i * button_width + 2
-                button_text = f"[{btn_name}] {label}"
                 # Truncate if too long for the section
                 max_len = button_width - 4
-                if len(button_text) > max_len:
-                    button_text = button_text[:max_len-2] + ".."
+                if len(label) > max_len:
+                    label = label[:max_len-2] + ".."
                 try:
-                    self.stdscr.addstr(footer_y, x_pos, button_text)
+                    self.stdscr.addstr(footer_y, x_pos, label)
                 except:
                     pass  # Ignore if text doesn't fit
 
@@ -129,7 +123,7 @@ class MainMenuScreen(BaseScreen):
             else:
                 self.stdscr.addstr(y, 10, item, curses.color_pair(COLOR_NORMAL))
 
-        self.draw_footer(up_label="Prev", down_label="Next", select_label="Enter", back_label="Quit")
+        self.draw_footer("↑", "↓", "Enter", "Quit")
         self.stdscr.refresh()
 
     def handle_input(self, key):
@@ -367,7 +361,7 @@ class AlbumBrowserScreen(BaseScreen):
                     self.stdscr.addstr(y, mid_x + 4, display_text,
                                      curses.color_pair(COLOR_NORMAL))
 
-        self.draw_footer(up_label="Prev", down_label="Next", select_label="Play", back_label="Back")
+        self.draw_footer("↑", "↓", "Play", "Back")
         self.stdscr.refresh()
 
     def handle_input(self, key):
@@ -500,7 +494,7 @@ class NowPlayingScreen(BaseScreen):
         else:
             self.stdscr.addstr(self.height // 2, 2, "No song playing")
 
-        self.draw_footer(up_label="Vol+", down_label="Vol-", select_label="Pause", back_label="Exit")
+        self.draw_footer("Vol+", "Vol-", "Pause", "Exit")
         self.stdscr.refresh()
 
     def handle_input(self, key):
@@ -571,7 +565,7 @@ class BluetoothSettingsScreen(BaseScreen):
 
         if not self.bt.bluetoothctl_available:
             self.stdscr.addstr(3, 2, "Bluetooth not available on this system", curses.A_BOLD)
-            self.draw_footer(back_label="Back")
+            self.draw_footer("", "", "", "Back")
             self.stdscr.refresh()
             return
 
@@ -663,7 +657,7 @@ class BluetoothSettingsScreen(BaseScreen):
 
                 y += 1
 
-        self.draw_footer(up_label="Prev", down_label="Next", select_label="Select", back_label="Back")
+        self.draw_footer("↑", "↓", "Select", "Back")
         self.stdscr.refresh()
 
     def handle_input(self, key):
