@@ -132,7 +132,10 @@ class MusicPlayerApp:
             if self.should_return_to_now_playing:
                 self.should_return_to_now_playing = False
                 self.show_now_playing()
-                break
+                # Restore current_screen to browser after returning
+                self.current_screen = browser
+                browser.draw()
+                continue
 
             key = self.stdscr.getch()
 
@@ -156,7 +159,8 @@ class MusicPlayerApp:
                 if action == "select_album":
                     # Show song list screen (this will return when user presses back)
                     self.show_song_list(data)
-                    # Redraw the album browser after returning from song list
+                    # Restore current_screen to browser after returning from song list
+                    self.current_screen = browser
                     browser.draw()
 
             browser.draw()
@@ -178,7 +182,10 @@ class MusicPlayerApp:
             if self.should_return_to_now_playing:
                 self.should_return_to_now_playing = False
                 self.show_now_playing()
-                return  # Return to album browser after now playing
+                # Restore current_screen to song_list after returning
+                self.current_screen = song_list
+                song_list.draw()
+                continue
 
             key = self.stdscr.getch()
 
@@ -204,7 +211,9 @@ class MusicPlayerApp:
                 if action == "play_song":
                     self.play_song(data)
                     self.show_now_playing()
-                    return  # Return to album browser after now playing
+                    # Restore current_screen to song_list after returning
+                    self.current_screen = song_list
+                    song_list.draw()
 
             song_list.draw()
     
