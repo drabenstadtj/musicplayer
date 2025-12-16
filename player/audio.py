@@ -22,6 +22,33 @@ for path in possible_paths:
 
 import vlc
 
+# Debug VLC loading
+def _debug_vlc():
+    """Debug VLC library loading"""
+    logfile = open('/tmp/musicplayer_audio.log', 'a')
+    try:
+        logfile.write(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', 'NOT SET')}\n")
+        logfile.write(f"VLC module path: {vlc.__file__}\n")
+
+        # Try to get VLC version
+        try:
+            logfile.write(f"VLC version: {vlc.libvlc_get_version()}\n")
+        except Exception as e:
+            logfile.write(f"Could not get VLC version: {e}\n")
+
+        # Try to find libvlc.so
+        import ctypes.util
+        libvlc_path = ctypes.util.find_library('vlc')
+        logfile.write(f"libvlc.so location: {libvlc_path}\n")
+
+    except Exception as e:
+        logfile.write(f"VLC debug error: {e}\n")
+    finally:
+        logfile.flush()
+        logfile.close()
+
+_debug_vlc()
+
 class AudioPlayer:
     def __init__(self):
         # Open log file for debugging
