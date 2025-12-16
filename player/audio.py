@@ -90,30 +90,22 @@ class AudioPlayer:
                     self._log(f"Found VLC plugins at: {path}")
                     break
 
-            # Create instance with plugin path
-            vlc_args = [
+            # Test each argument to find the problematic one
+            test_args = [
                 '--aout=pulse',
-                '--verbose=2',                 # Enable verbose logging temporarily
-                '--network-caching=3000',     # 3 second network cache
-                '--audio-buffer=500',          # 500ms audio buffer
-                '--clock-jitter=1000',         # Allow 1s clock jitter
-                '--audio-resampler=soxr',      # High quality resampler
+                '--verbose=0',
+                '--network-caching=3000',
             ]
 
-            if vlc_plugin_path:
-                vlc_args.append(f'--plugin-path={vlc_plugin_path}')
+            self._log("Testing VLC args individually...")
+            for i, arg in enumerate(test_args):
+                test = vlc.Instance(arg)
+                self._log(f"  Test {i+1} with '{arg}': {test}")
 
-            self._log(f"VLC args: {vlc_args}")
-
-            # Try creating instance without args first
-            self._log("Trying VLC Instance with no args...")
-            test_instance = vlc.Instance()
-            self._log(f"No-args instance: {test_instance}")
-
-            # Now try with our args
-            self._log("Trying VLC Instance with args...")
-            self.instance = vlc.Instance(*vlc_args)
-            self._log(f"VLC instance created: {self.instance}")
+            # Try with just the essential args
+            self._log("Trying minimal VLC instance with just PulseAudio...")
+            self.instance = vlc.Instance('--aout=pulse', '--verbose=0', '--network-caching=3000')
+            self._log(f"Minimal instance: {self.instance}")
 
             if self.instance is None:
                 raise Exception("VLC Instance() returned None - VLC libraries not properly installed")
