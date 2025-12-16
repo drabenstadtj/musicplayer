@@ -1,7 +1,26 @@
-import vlc
 import os
 import subprocess
 import time
+
+# Set library path before importing vlc
+# Common locations for libvlc on Raspberry Pi
+possible_paths = [
+    '/usr/lib/arm-linux-gnueabihf',
+    '/usr/lib/aarch64-linux-gnu',
+    '/usr/lib/x86_64-linux-gnu',
+    '/usr/lib',
+]
+
+for path in possible_paths:
+    if os.path.exists(path):
+        current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+        if current_ld_path:
+            os.environ['LD_LIBRARY_PATH'] = f"{path}:{current_ld_path}"
+        else:
+            os.environ['LD_LIBRARY_PATH'] = path
+        break
+
+import vlc
 
 class AudioPlayer:
     def __init__(self):
