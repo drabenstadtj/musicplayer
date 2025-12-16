@@ -93,7 +93,7 @@ class AudioPlayer:
             # Create instance with plugin path
             vlc_args = [
                 '--aout=pulse',
-                '--verbose=0',
+                '--verbose=2',                 # Enable verbose logging temporarily
                 '--network-caching=3000',     # 3 second network cache
                 '--audio-buffer=500',          # 500ms audio buffer
                 '--clock-jitter=1000',         # Allow 1s clock jitter
@@ -103,7 +103,21 @@ class AudioPlayer:
             if vlc_plugin_path:
                 vlc_args.append(f'--plugin-path={vlc_plugin_path}')
 
-            self.instance = vlc.Instance(*vlc_args)
+            self._log(f"VLC args: {vlc_args}")
+
+            # Try creating instance with error capture
+            import sys
+            from io import StringIO
+            old_stderr = sys.stderr
+            sys.stderr = captured_stderr = StringIO()
+
+            try:
+                self.instance = vlc.Instance(*vlc_args)
+            finally:
+                sys.stderr = old_stderr
+                stderr_output = captured_stderr.getvalue()
+                if stderr_output:
+                    self._log(f"VLC stderr output:\n{stderr_output}")
 
             self._log(f"VLC instance created: {self.instance}")
 
