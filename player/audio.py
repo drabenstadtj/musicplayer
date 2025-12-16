@@ -77,35 +77,15 @@ class AudioPlayer:
             # Increase audio buffer for smoother output
             self._log("Creating VLC instance...")
 
-            # Find VLC plugin directory
-            vlc_plugin_path = None
-            possible_plugin_paths = [
-                '/usr/lib/aarch64-linux-gnu/vlc/plugins',
-                '/usr/lib/arm-linux-gnueabihf/vlc/plugins',
-                '/usr/lib/vlc/plugins',
-            ]
-            for path in possible_plugin_paths:
-                if os.path.exists(path):
-                    vlc_plugin_path = path
-                    self._log(f"Found VLC plugins at: {path}")
-                    break
-
-            # Test each argument to find the problematic one
-            test_args = [
-                '--aout=pulse',
-                '--verbose=0',
-                '--network-caching=3000',
-            ]
-
-            self._log("Testing VLC args individually...")
-            for i, arg in enumerate(test_args):
-                test = vlc.Instance(arg)
-                self._log(f"  Test {i+1} with '{arg}': {test}")
-
-            # Try with just the essential args
-            self._log("Trying minimal VLC instance with just PulseAudio...")
-            self.instance = vlc.Instance('--aout=pulse', '--verbose=0', '--network-caching=3000')
-            self._log(f"Minimal instance: {self.instance}")
+            # Create VLC instance with working args
+            # Note: Some args like --audio-buffer, --clock-jitter, --audio-resampler
+            # cause Instance() to return None on this VLC version, so we use minimal args
+            self.instance = vlc.Instance(
+                '--aout=pulse',              # Use PulseAudio for audio output
+                '--verbose=0',               # Minimal logging
+                '--network-caching=3000'     # 3 second buffer for streaming
+            )
+            self._log(f"VLC instance created: {self.instance}")
 
             if self.instance is None:
                 raise Exception("VLC Instance() returned None - VLC libraries not properly installed")
@@ -199,17 +179,31 @@ class AudioPlayer:
             self.is_playing = True
             self.is_paused = False
 
-            self._log("✓ Stream started successfully!")
+            # Wait for VLC to start playing and check state
+            for i in range(10):  # Check for up to 5 seconds
+                time.sleep(0.5)
+                state = self.player.get_state()
+                self._log(f"VLC state after {(i+1)*0.5}s: {state}")
 
-            # Check if audio stream was created
-            time.sleep(0.5)  # Give PulseAudio time to create the stream
+                # VLC states: 0=NothingSpecial, 1=Opening, 2=Buffering, 3=Playing, 4=Paused, 5=Stopped, 6=Ended, 7=Error
+                if state == 3:  # Playing
+                    self._log("✓ VLC is now playing!")
+                    break
+                elif state == 7:  # Error
+                    self._log("✗ VLC encountered an error!")
+                    break
+
+            # Check if audio stream was created in PulseAudio
             result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'],
                                   capture_output=True, text=True, timeout=2)
             if result.stdout.strip():
-                self._log(f"Audio stream active: {result.stdout.strip()}")
+                self._log(f"✓ Audio stream active: {result.stdout.strip()}")
             else:
-                self._log("WARNING: No audio stream detected! VLC might not be outputting audio.")
-                self._log("Try: pactl list sink-inputs")
+                self._log("WARNING: No PulseAudio sink-input detected!")
+                self._log("This could mean VLC is not outputting to PulseAudio.")
+
+                # Check what audio output VLC is using
+                self._log(f"VLC audio output module: {self.player.audio_output_device_enum()}")
 
             return True
 
