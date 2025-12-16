@@ -115,7 +115,7 @@ class MainMenuScreen(BaseScreen):
 
     def draw(self):
         self.stdscr.clear()
-        self.draw_status_bar(f"{SYMBOL_MUSIC} MUSIC PLAYER", battery_percent=85)
+        self.draw_status_bar(f"{SYMBOL_MUSIC} MUSIC PLAYER")
 
         # Draw menu items
         start_y = 3
@@ -225,7 +225,7 @@ class AlbumBrowserScreen(BaseScreen):
             self.last_album_index = self.album_index
 
         self.stdscr.clear()
-        self.draw_status_bar("Albums", battery_percent=85)
+        self.draw_status_bar("Albums")
 
         # Draw albums (full width)
         self.stdscr.addstr(2, 2, "Albums:", curses.A_BOLD)
@@ -235,7 +235,7 @@ class AlbumBrowserScreen(BaseScreen):
             if y >= self.height - 2:
                 break
 
-            # Format album display with artist
+            # Format album display with right-justified artist
             album = self.albums[i]
             artist = album.get('artist', 'Unknown Artist')
             album_name = album['name']
@@ -248,19 +248,35 @@ class AlbumBrowserScreen(BaseScreen):
             # Calculate max width for content (full width of screen)
             max_line_width = self.width - x_start - 2 - display_width(prefix)
 
-            # Combine album and artist as one string for scrolling
-            full_text = f"{album_name} - {artist}"
+            # Reserve space for artist (right-aligned) - use 40% of width
+            artist_width = int(max_line_width * 0.4)
+            album_width = max_line_width - artist_width - 1  # -1 for space separator
 
-            # Scroll or truncate combined text
+            # Truncate or scroll artist (right side)
+            artist_display = truncate_to_width(artist, artist_width)
+            artist_display_width = display_width(artist_display)
+
+            # Truncate or scroll album name (left side)
             if is_selected:
+                # For selected item, scroll the combined text
+                full_text = f"{album_name} - {artist}"
                 display_text = self._get_scrolled_text(full_text, max_line_width, True)
+                # When scrolling, display as combined text
+                if is_selected:
+                    self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
+                                     curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
             else:
-                display_text = truncate_to_width(full_text, max_line_width)
+                # Not selected - show album left-aligned, artist right-aligned
+                album_display = truncate_to_width(album_name, album_width)
+                album_display_width = display_width(album_display)
 
-            if is_selected:
-                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
-                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
-            else:
+                # Calculate padding to right-justify artist
+                padding_needed = max_line_width - album_display_width - artist_display_width - 1
+                if padding_needed < 0:
+                    padding_needed = 0
+
+                display_text = album_display + (" " * padding_needed) + " " + artist_display
+
                 self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
                                  curses.color_pair(COLOR_NORMAL))
 
@@ -354,7 +370,7 @@ class SongListScreen(BaseScreen):
 
         self.stdscr.clear()
         album_name = self.album.get('name', 'Unknown Album')
-        self.draw_status_bar(truncate_to_width(album_name, self.width - 10), battery_percent=85)
+        self.draw_status_bar(truncate_to_width(album_name, self.width - 10))
 
         # Draw songs (full width)
         self.stdscr.addstr(2, 2, "Songs:", curses.A_BOLD)
@@ -444,7 +460,11 @@ class NowPlayingScreen(BaseScreen):
 
     def draw(self):
         self.stdscr.clear()
-        self.draw_status_bar("Now Playing")
+
+        # Show volume in header
+        vol_percent = int(self.player.volume)
+        header_text = f"Now Playing - Vol: {vol_percent}%"
+        self.draw_status_bar(header_text)
 
         if self.player.current_song:
             song = self.player.current_song
@@ -510,10 +530,6 @@ class NowPlayingScreen(BaseScreen):
             status = f"{SYMBOL_PLAYING} PLAYING" if not self.player.is_paused else f"{SYMBOL_PAUSED} PAUSED"
             self.stdscr.addstr(info_y + 10, info_x_offset, status,
                              curses.color_pair(COLOR_PLAYING) | curses.A_BOLD)
-
-            # Volume (player.volume is already 0-100 in VLC)
-            vol_percent = int(self.player.volume)
-            self.stdscr.addstr(info_y + 11, info_x_offset, f"Volume: {vol_percent}%")
         else:
             self.stdscr.addstr(self.height // 2, 2, "No song playing")
 
@@ -584,7 +600,7 @@ class BluetoothSettingsScreen(BaseScreen):
 
     def draw(self):
         self.stdscr.clear()
-        self.draw_status_bar("Bluetooth Audio", battery_percent=85)
+        self.draw_status_bar("Bluetooth Audio")
 
         if not self.bt.bluetoothctl_available:
             self.stdscr.addstr(3, 2, "Bluetooth not available on this system", curses.A_BOLD)
