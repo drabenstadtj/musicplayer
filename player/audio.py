@@ -76,14 +76,34 @@ class AudioPlayer:
             # Increase network caching to reduce choppy playback
             # Increase audio buffer for smoother output
             self._log("Creating VLC instance...")
-            self.instance = vlc.Instance(
+
+            # Find VLC plugin directory
+            vlc_plugin_path = None
+            possible_plugin_paths = [
+                '/usr/lib/aarch64-linux-gnu/vlc/plugins',
+                '/usr/lib/arm-linux-gnueabihf/vlc/plugins',
+                '/usr/lib/vlc/plugins',
+            ]
+            for path in possible_plugin_paths:
+                if os.path.exists(path):
+                    vlc_plugin_path = path
+                    self._log(f"Found VLC plugins at: {path}")
+                    break
+
+            # Create instance with plugin path
+            vlc_args = [
                 '--aout=pulse',
                 '--verbose=0',
                 '--network-caching=3000',     # 3 second network cache
                 '--audio-buffer=500',          # 500ms audio buffer
                 '--clock-jitter=1000',         # Allow 1s clock jitter
                 '--audio-resampler=soxr',      # High quality resampler
-            )
+            ]
+
+            if vlc_plugin_path:
+                vlc_args.append(f'--plugin-path={vlc_plugin_path}')
+
+            self.instance = vlc.Instance(*vlc_args)
 
             self._log(f"VLC instance created: {self.instance}")
 
