@@ -20,13 +20,26 @@ for path in possible_paths:
             os.environ['LD_LIBRARY_PATH'] = path
         break
 
-import vlc
+# Try importing vlc and log any errors
+try:
+    import vlc
+    vlc_import_success = True
+    vlc_import_error = None
+except Exception as e:
+    vlc_import_success = False
+    vlc_import_error = str(e)
+    vlc = None
 
 # Debug VLC loading
 def _debug_vlc():
     """Debug VLC library loading"""
     logfile = open('/tmp/musicplayer_audio.log', 'a')
     try:
+        logfile.write(f"VLC import success: {vlc_import_success}\n")
+        if not vlc_import_success:
+            logfile.write(f"VLC import error: {vlc_import_error}\n")
+            return
+
         logfile.write(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', 'NOT SET')}\n")
         logfile.write(f"VLC module path: {vlc.__file__}\n")
 
