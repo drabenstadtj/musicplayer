@@ -129,7 +129,7 @@ class MainMenuScreen(BaseScreen):
             else:
                 self.stdscr.addstr(y, 10, item, curses.color_pair(COLOR_NORMAL))
 
-        self.draw_footer(up_label="Prev", down_label="Next", select_label="Select", back_label="Quit")
+        self.draw_footer(up_label="Prev", down_label="Next", select_label="Enter", back_label="Quit")
         self.stdscr.refresh()
 
     def handle_input(self, key):
@@ -500,7 +500,7 @@ class NowPlayingScreen(BaseScreen):
         else:
             self.stdscr.addstr(self.height // 2, 2, "No song playing")
 
-        self.draw_footer(up_label="Vol+", down_label="Vol-", select_label="Play/Pause", back_label="Back")
+        self.draw_footer(up_label="Vol+", down_label="Vol-", select_label="Pause", back_label="Exit")
         self.stdscr.refresh()
 
     def handle_input(self, key):
@@ -663,7 +663,7 @@ class BluetoothSettingsScreen(BaseScreen):
 
                 y += 1
 
-        self.draw_footer(up_label="Prev", down_label="Next", select_label="Choose", back_label="Return")
+        self.draw_footer(up_label="Prev", down_label="Next", select_label="Select", back_label="Back")
         self.stdscr.refresh()
 
     def handle_input(self, key):
