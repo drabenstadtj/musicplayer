@@ -256,15 +256,28 @@ class AlbumBrowserScreen(BaseScreen):
             artist_display = truncate_to_width(artist, artist_width)
             artist_display_width = display_width(artist_display)
 
-            # Truncate or scroll album name (left side)
+            # Display album and artist
             if is_selected:
-                # For selected item, scroll the combined text
+                # For selected item, check if scrolling is needed
                 full_text = f"{album_name} - {artist}"
-                display_text = self._get_scrolled_text(full_text, max_line_width, True)
-                # When scrolling, display as combined text
-                if is_selected:
-                    self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
-                                     curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+                full_text_width = display_width(full_text)
+
+                if full_text_width > max_line_width:
+                    # Scroll the combined text
+                    display_text = self._get_scrolled_text(full_text, max_line_width, True)
+                else:
+                    # Fits without scrolling - maintain right-justified layout
+                    album_display = truncate_to_width(album_name, album_width)
+                    album_display_width = display_width(album_display)
+
+                    padding_needed = max_line_width - album_display_width - artist_display_width - 1
+                    if padding_needed < 0:
+                        padding_needed = 0
+
+                    display_text = album_display + (" " * padding_needed) + " " + artist_display
+
+                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
+                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
             else:
                 # Not selected - show album left-aligned, artist right-aligned
                 album_display = truncate_to_width(album_name, album_width)

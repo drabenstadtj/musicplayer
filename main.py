@@ -154,9 +154,10 @@ class MusicPlayerApp:
             elif isinstance(result, tuple):
                 action, data = result
                 if action == "select_album":
-                    # Show song list screen
+                    # Show song list screen (this will return when user presses back)
                     self.show_song_list(data)
-                    break
+                    # Redraw the album browser after returning from song list
+                    browser.draw()
 
             browser.draw()
 
@@ -177,7 +178,7 @@ class MusicPlayerApp:
             if self.should_return_to_now_playing:
                 self.should_return_to_now_playing = False
                 self.show_now_playing()
-                break
+                return  # Return to album browser after now playing
 
             key = self.stdscr.getch()
 
@@ -194,14 +195,16 @@ class MusicPlayerApp:
                 result = song_list._pending_action
                 song_list._pending_action = None
 
-            if result == False or result == "back":
-                break
+            if result == False:
+                return  # Return to album browser
+            elif result == "back":
+                return  # Return to album browser
             elif isinstance(result, tuple):
                 action, data = result
                 if action == "play_song":
                     self.play_song(data)
                     self.show_now_playing()
-                    break
+                    return  # Return to album browser after now playing
 
             song_list.draw()
     
