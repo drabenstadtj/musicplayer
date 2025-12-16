@@ -1,0 +1,11 @@
+TODO:
+- cache album metadata from navidrome
+- add album art display
+- fix settings screen
+- change scrolling to scroll album and artist together
+- make arrows keep moving when holding down
+- tune choppiness of playback
+- fix volume control
+- make album browser and album songlist separate screens
+- make a way to get back to now playing screen (maybe button 1 and button 4 simultaneously)
+- remove battery icon from now playing screen

@@ -83,7 +83,7 @@ class AudioPlayer:
             self.instance = vlc.Instance(
                 '--aout=pulse',              # Use PulseAudio for audio output
                 '--verbose=0',               # Minimal logging
-                '--network-caching=3000'     # 3 second buffer for streaming
+                '--network-caching=10000'    # 10 second buffer for streaming (reduce choppiness)
             )
             self._log(f"VLC instance created: {self.instance}")
 
@@ -107,7 +107,7 @@ class AudioPlayer:
         self.current_song = None
         self.is_playing = False
         self.is_paused = False
-        self.volume = 70  # VLC uses 0-100 scale
+        self.volume = 100  # VLC uses 0-200 scale (100 = normal, 200 = amplified)
 
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
@@ -251,21 +251,23 @@ class AudioPlayer:
         self.is_paused = False
 
     def set_volume(self, volume):
-        """Set volume (0.0 to 1.0)"""
-        # Convert 0.0-1.0 to 0-100 for VLC
-        self.volume = max(0, min(100, int(volume * 100)))
+        """Set volume (0.0 to 2.0)"""
+        # Convert 0.0-2.0 to 0-200 for VLC (allows amplification above 100%)
+        self.volume = max(0, min(200, int(volume * 100)))
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
 
-    def volume_up(self, step=0.1):
+    def volume_up(self, step=10):
         """Increase volume"""
-        current = self.volume / 100.0
-        self.set_volume(current + step)
+        self.volume = max(0, min(200, self.volume + step))
+        if self.audio_available:
+            self.player.audio_set_volume(self.volume)
 
-    def volume_down(self, step=0.1):
+    def volume_down(self, step=10):
         """Decrease volume"""
-        current = self.volume / 100.0
-        self.set_volume(current - step)
+        self.volume = max(0, min(200, self.volume - step))
+        if self.audio_available:
+            self.player.audio_set_volume(self.volume)
 
     def get_position(self):
         """Get current playback position in seconds"""

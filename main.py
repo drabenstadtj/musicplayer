@@ -1,13 +1,13 @@
 import curses
 from player.navidrome import NavidromeClient
-from ui.screens import MainMenuScreen, AlbumBrowserScreen, NowPlayingScreen, BluetoothSettingsScreen
+from ui.screens import MainMenuScreen, AlbumBrowserScreen, SongListScreen, NowPlayingScreen, BluetoothSettingsScreen
 from ui.theme import init_colors
 from hardware.button_controller import ButtonController
 
 class MusicPlayerApp:
     def __init__(self, stdscr):
         self.stdscr = stdscr
-        
+
         # Try to connect to Navidrome
         self.client = NavidromeClient()
 
@@ -18,16 +18,23 @@ class MusicPlayerApp:
         except Exception as e:
             from player.audio_mock import AudioPlayer
             self.audio = AudioPlayer()
-        
+
         # Setup curses
         curses.curs_set(0)
         self.stdscr.nodelay(1)
         self.stdscr.timeout(100)
         init_colors()
-        
+
         self.current_screen = None
         self.running = True
-        
+
+        # Cache for album metadata
+        self.cached_albums = None
+
+        # Track if now playing screen is available
+        self.has_active_playback = False
+        self.should_return_to_now_playing = False
+
         # Initialize button controller
         self.button_controller = ButtonController(self, use_gpio=True)
         self.button_controller.start()
@@ -106,8 +113,12 @@ class MusicPlayerApp:
         return False
     
     def show_albums(self):
-        # Fetch all albums
-        albums = self.client.get_all_albums()
+        # Use cached albums if available, otherwise fetch from Navidrome
+        if self.cached_albums is None:
+            albums = self.client.get_all_albums()
+            self.cached_albums = albums
+        else:
+            albums = self.cached_albums
 
         if not albums:
             return
@@ -117,6 +128,12 @@ class MusicPlayerApp:
         browser.draw()
 
         while self.running:
+            # Check for now playing combo
+            if self.should_return_to_now_playing:
+                self.should_return_to_now_playing = False
+                self.show_now_playing()
+                break
+
             key = self.stdscr.getch()
 
             result = None
@@ -136,23 +153,64 @@ class MusicPlayerApp:
                 break
             elif isinstance(result, tuple):
                 action, data = result
-                if action == "load_album":
-                    # Load from Navidrome
-                    songs = self.client.get_album_songs(data)
-                    browser.set_songs(songs)
+                if action == "select_album":
+                    # Show song list screen
+                    self.show_song_list(data)
+                    break
 
-                elif action == "play_song":
+            browser.draw()
+
+    def show_song_list(self, album):
+        """Show song list for an album"""
+        # Load songs from Navidrome
+        songs = self.client.get_album_songs(album['id'])
+
+        if not songs:
+            return
+
+        song_list = SongListScreen(self.stdscr, album, songs)
+        self.current_screen = song_list
+        song_list.draw()
+
+        while self.running:
+            # Check for now playing combo
+            if self.should_return_to_now_playing:
+                self.should_return_to_now_playing = False
+                self.show_now_playing()
+                break
+
+            key = self.stdscr.getch()
+
+            result = None
+
+            if key != -1:
+                # Try button emulator first, only call handle_input if not handled
+                handled_by_buttons = self._handle_keyboard_input(key)
+                if not handled_by_buttons:
+                    result = song_list.handle_input(key)
+
+            # Check for button actions
+            if hasattr(song_list, '_pending_action') and song_list._pending_action:
+                result = song_list._pending_action
+                song_list._pending_action = None
+
+            if result == False or result == "back":
+                break
+            elif isinstance(result, tuple):
+                action, data = result
+                if action == "play_song":
                     self.play_song(data)
                     self.show_now_playing()
                     break
 
-            browser.draw()
+            song_list.draw()
     
     def play_song(self, song):
         """Start playing a song"""
         stream_url = self.client.get_stream_url(song['id'])
         if stream_url:
             self.audio.play(stream_url, song)
+            self.has_active_playback = True
 
     def show_now_playing(self):
         """Show now playing screen"""
@@ -188,6 +246,12 @@ class MusicPlayerApp:
         bt_settings.draw()
 
         while self.running:
+            # Check for now playing combo
+            if self.should_return_to_now_playing:
+                self.should_return_to_now_playing = False
+                self.show_now_playing()
+                break
+
             key = self.stdscr.getch()
 
             result = None
@@ -210,6 +274,11 @@ class MusicPlayerApp:
 
     def quit(self):
         self.running = False
+
+    def return_to_now_playing(self):
+        """Return to now playing screen if there's active playback"""
+        if self.has_active_playback:
+            self.should_return_to_now_playing = True
 
     def cleanup(self):
         self.button_controller.stop()

@@ -44,19 +44,23 @@ class ButtonHandler:
         handler.stop()
     """
     
-    def __init__(self, debounce_time: float = 0.05, long_press_time: float = 1.0, 
-                 double_press_time: float = 0.3):
+    def __init__(self, debounce_time: float = 0.05, long_press_time: float = 1.0,
+                 double_press_time: float = 0.3, repeat_delay: float = 0.5, repeat_interval: float = 0.15):
         """
         Initialize button handler.
-        
+
         Args:
             debounce_time: Minimum time between button state changes (seconds)
             long_press_time: Time to hold for long press event (seconds)
             double_press_time: Max time between presses for double press (seconds)
+            repeat_delay: Time before repeat starts when button held (seconds)
+            repeat_interval: Time between repeat events (seconds)
         """
         self.debounce_time = debounce_time
         self.long_press_time = long_press_time
         self.double_press_time = double_press_time
+        self.repeat_delay = repeat_delay
+        self.repeat_interval = repeat_interval
         
         self._callbacks: Dict[Button, Dict[ButtonEvent, list]] = {
             button: {event: [] for event in ButtonEvent}
@@ -67,6 +71,7 @@ class ButtonHandler:
         self._last_press_time: Dict[Button, float] = {button: 0 for button in Button}
         self._last_release_time: Dict[Button, float] = {button: 0 for button in Button}
         self._press_count: Dict[Button, int] = {button: 0 for button in Button}
+        self._last_repeat_time: Dict[Button, float] = {button: 0 for button in Button}
         
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
@@ -157,13 +162,23 @@ class ButtonHandler:
                             # Trigger release event
                             self._trigger_callbacks(button, ButtonEvent.RELEASE)
                 
-                # Check for long press
+                # Check for long press and auto-repeat
                 elif is_pressed:
                     time_held = current_time - self._last_press_time[button]
                     if time_held >= self.long_press_time:
                         # Only trigger once per long press
                         if time_held < self.long_press_time + 0.1:
                             self._trigger_callbacks(button, ButtonEvent.LONG_PRESS)
+
+                    # Auto-repeat for UP and DOWN buttons only
+                    if button in (Button.UP, Button.DOWN):
+                        # Check if we should start repeating
+                        if time_held >= self.repeat_delay:
+                            time_since_repeat = current_time - self._last_repeat_time[button]
+                            # Trigger repeat at intervals
+                            if time_since_repeat >= self.repeat_interval:
+                                self._last_repeat_time[button] = current_time
+                                self._trigger_callbacks(button, ButtonEvent.PRESS)
             
             # Small sleep to prevent CPU spinning
             time.sleep(0.01)

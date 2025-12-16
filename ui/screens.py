@@ -159,35 +159,22 @@ class MainMenuScreen(BaseScreen):
 
 
 class AlbumBrowserScreen(BaseScreen):
-    """Album browser screen (split view)"""
+    """Album browser screen (full width)"""
     def __init__(self, stdscr, albums):
         super().__init__(stdscr)
         self.albums = albums
-        self.songs = []
         self.album_index = 0
-        self.song_index = 0
-        self.active_panel = "albums"  # "albums" or "songs"
-        self.album_scroll_offset = 0
-        self.artist_scroll_offset = 0
+        self.scroll_offset = 0
         self.scroll_frame = 0
         self.last_album_index = 0
-        self.last_song_index = 0
-        self.last_active_panel = "albums"
 
-    def set_songs(self, songs):
-        """Set songs for selected album"""
-        self.songs = songs
-        self.song_index = 0
-        self.active_panel = "songs"
-
-    def _get_scrolled_text(self, text, max_width, is_selected, scroll_type='album'):
+    def _get_scrolled_text(self, text, max_width, is_selected):
         """Get scrolling text for selected items with truncated content
 
         Args:
             text: Text to scroll
             max_width: Maximum display width
             is_selected: Whether this item is selected
-            scroll_type: 'album' or 'artist' to use appropriate scroll offset
         """
         text_width = display_width(text)
 
@@ -195,20 +182,15 @@ class AlbumBrowserScreen(BaseScreen):
             # Not selected or fits within width - no scrolling needed
             return truncate_to_width(text, max_width)
 
-        # Get and increment the appropriate scroll offset
-        if scroll_type == 'album':
-            self.album_scroll_offset = (self.album_scroll_offset + 1) % (text_width + 3)
-            scroll_offset = self.album_scroll_offset
-        else:  # artist
-            self.artist_scroll_offset = (self.artist_scroll_offset + 1) % (text_width + 3)
-            scroll_offset = self.artist_scroll_offset
+        # Increment scroll offset
+        self.scroll_offset = (self.scroll_offset + 1) % (text_width + 3)
 
         # Create circular scrolling effect
         # Add padding between end and start
         scrolling_text = text + "   " + text
 
         # Calculate starting position in the scrolling text
-        start_offset = scroll_offset
+        start_offset = self.scroll_offset
 
         # Extract visible portion
         visible_text = ""
@@ -236,28 +218,16 @@ class AlbumBrowserScreen(BaseScreen):
         return visible_text
 
     def draw(self):
-        # Reset scroll if selection changed (check both index AND panel)
-        selection_changed = (
-            self.album_index != self.last_album_index or
-            self.song_index != self.last_song_index or
-            self.active_panel != self.last_active_panel
-        )
-
-        if selection_changed:
-            self.album_scroll_offset = 0
-            self.artist_scroll_offset = 0
+        # Reset scroll if selection changed
+        if self.album_index != self.last_album_index:
+            self.scroll_offset = 0
             self.scroll_frame = 0
             self.last_album_index = self.album_index
-            self.last_song_index = self.song_index
-            self.last_active_panel = self.active_panel
 
         self.stdscr.clear()
         self.draw_status_bar("Albums", battery_percent=85)
 
-        # Split screen in half
-        mid_x = self.width // 2
-
-        # Draw albums (left panel)
+        # Draw albums (full width)
         self.stdscr.addstr(2, 2, "Albums:", curses.A_BOLD)
         start = max(0, self.album_index - 5)
         for i in range(start, min(len(self.albums), start + 10)):
@@ -265,61 +235,27 @@ class AlbumBrowserScreen(BaseScreen):
             if y >= self.height - 2:
                 break
 
-            # Format album display with right-justified artist
+            # Format album display with artist
             album = self.albums[i]
             artist = album.get('artist', 'Unknown Artist')
             album_name = album['name']
 
-            # Calculate available space
-            is_selected = i == self.album_index and self.active_panel == "albums"
+            # Calculate available space (full width)
+            is_selected = i == self.album_index
             prefix = "> " if is_selected else "  "
             x_start = 2
 
-            # Calculate max width for content (accounting for display width, not string length)
-            # From x_start to separator (mid_x), leave 1 char margin before separator
-            max_line_width = mid_x - x_start - 1 - display_width(prefix)
+            # Calculate max width for content (full width of screen)
+            max_line_width = self.width - x_start - 2 - display_width(prefix)
 
-            # Reserve minimum space for album and artist (with reasonable split)
-            # Use 60% for album, 40% for artist
-            max_artist_width = int(max_line_width * 0.4)
-            album_width = max_line_width - max_artist_width - 1
+            # Combine album and artist as one string for scrolling
+            full_text = f"{album_name} - {artist}"
 
-            # Scroll album and artist separately if selected and truncated
+            # Scroll or truncate combined text
             if is_selected:
-                # Check if album needs scrolling
-                if display_width(album_name) > album_width:
-                    album_display = self._get_scrolled_text(album_name, album_width, True, 'album')
-                else:
-                    album_display = truncate_to_width(album_name, album_width)
-
-                # Check if artist needs scrolling
-                if display_width(artist) > max_artist_width:
-                    artist_display = self._get_scrolled_text(artist, max_artist_width, True, 'artist')
-                else:
-                    artist_display = truncate_to_width(artist, max_artist_width)
-
-                album_display_width = display_width(album_display)
-                artist_width = display_width(artist_display)
+                display_text = self._get_scrolled_text(full_text, max_line_width, True)
             else:
-                # Not selected - just truncate
-                artist_display = truncate_to_width(artist, max_artist_width)
-                artist_width = display_width(artist_display)
-
-                album_display = truncate_to_width(album_name, album_width)
-                album_display_width = display_width(album_display)
-
-            # Calculate padding needed (in spaces, which are always width 1)
-            padding_needed = max_line_width - album_display_width - artist_width - 1
-            if padding_needed < 0:
-                padding_needed = 0
-
-            album_padded = album_display + (" " * padding_needed)
-            display_text = f"{album_padded} {artist_display}"
-
-            # Final safety check - ensure total display width doesn't exceed limit
-            text_display_width = display_width(display_text)
-            if text_display_width > max_line_width:
-                display_text = truncate_to_width(display_text, max_line_width)
+                display_text = truncate_to_width(full_text, max_line_width)
 
             if is_selected:
                 self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
@@ -328,105 +264,172 @@ class AlbumBrowserScreen(BaseScreen):
                 self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
                                  curses.color_pair(COLOR_NORMAL))
 
-        # Draw vertical separator
-        for y in range(2, self.height - 1):
-            self.stdscr.addstr(y, mid_x, "│")
+        self.draw_footer("↑", "↓", "Select", "Back")
+        self.stdscr.refresh()
 
-        # Draw songs (right panel)
-        if self.songs:
-            self.stdscr.addstr(2, mid_x + 2, "Songs:", curses.A_BOLD)
-            start = max(0, self.song_index - 5)
-            for i in range(start, min(len(self.songs), start + 10)):
-                y = 4 + (i - start)
-                if y >= self.height - 2:
-                    break
+    def handle_input(self, key):
+        if key == curses.KEY_UP:
+            self.album_index = max(0, self.album_index - 1)
 
-                # Format: "Track# - Song Title - Artist"
-                song = self.songs[i]
-                track_num = song.get('track', '')
-                title = song.get('title', 'Unknown')
-                artist = song.get('artist', 'Unknown Artist')
+        elif key == curses.KEY_DOWN:
+            self.album_index = min(len(self.albums) - 1, self.album_index + 1)
 
-                # Build display text with track number if available
-                if track_num:
-                    display_text = f"{track_num}. {title} - {artist}"
-                else:
-                    display_text = f"{title} - {artist}"
+        elif key == ord('\n'):  # Enter
+            return ("select_album", self.albums[self.album_index])
 
-                # Truncate to fit panel width
-                max_width = mid_x - 6
-                if len(display_text) > max_width:
-                    display_text = display_text[:max_width - 3] + "..."
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            return "back"
 
-                if i == self.song_index and self.active_panel == "songs":
-                    self.stdscr.addstr(y, mid_x + 2, f"> {display_text}",
-                                     curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
-                else:
-                    self.stdscr.addstr(y, mid_x + 4, display_text,
-                                     curses.color_pair(COLOR_NORMAL))
+        elif key == ord('q') or key == ord('Q'):
+            return False
+
+        return True
+
+    # Button support
+    def on_up(self):
+        self.album_index = max(0, self.album_index - 1)
+        self.draw()
+
+    def on_down(self):
+        self.album_index = min(len(self.albums) - 1, self.album_index + 1)
+        self.draw()
+
+    def on_select(self):
+        self._pending_action = ("select_album", self.albums[self.album_index])
+
+    def on_back(self):
+        self._pending_action = "back"
+
+
+class SongListScreen(BaseScreen):
+    """Song list screen (full width)"""
+    def __init__(self, stdscr, album, songs):
+        super().__init__(stdscr)
+        self.album = album
+        self.songs = songs
+        self.song_index = 0
+        self.scroll_offset = 0
+        self.scroll_frame = 0
+        self.last_song_index = 0
+
+    def _get_scrolled_text(self, text, max_width, is_selected):
+        """Get scrolling text for selected items with truncated content"""
+        text_width = display_width(text)
+
+        if not is_selected or text_width <= max_width:
+            return truncate_to_width(text, max_width)
+
+        self.scroll_offset = (self.scroll_offset + 1) % (text_width + 3)
+        scrolling_text = text + "   " + text
+        start_offset = self.scroll_offset
+
+        visible_text = ""
+        current_width = 0
+        char_index = 0
+
+        temp_offset = 0
+        while temp_offset < start_offset and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            temp_offset += char_width
+            char_index += 1
+
+        while current_width < max_width and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            if current_width + char_width > max_width:
+                break
+            visible_text += char
+            current_width += char_width
+            char_index += 1
+
+        return visible_text
+
+    def draw(self):
+        # Reset scroll if selection changed
+        if self.song_index != self.last_song_index:
+            self.scroll_offset = 0
+            self.scroll_frame = 0
+            self.last_song_index = self.song_index
+
+        self.stdscr.clear()
+        album_name = self.album.get('name', 'Unknown Album')
+        self.draw_status_bar(truncate_to_width(album_name, self.width - 10), battery_percent=85)
+
+        # Draw songs (full width)
+        self.stdscr.addstr(2, 2, "Songs:", curses.A_BOLD)
+        start = max(0, self.song_index - 5)
+        for i in range(start, min(len(self.songs), start + 10)):
+            y = 4 + (i - start)
+            if y >= self.height - 2:
+                break
+
+            song = self.songs[i]
+            track_num = song.get('track', '')
+            title = song.get('title', 'Unknown')
+            artist = song.get('artist', 'Unknown Artist')
+
+            # Build display text with track number if available
+            if track_num:
+                full_text = f"{track_num}. {title} - {artist}"
+            else:
+                full_text = f"{title} - {artist}"
+
+            is_selected = i == self.song_index
+            prefix = "> " if is_selected else "  "
+            x_start = 2
+
+            # Calculate max width for content (full width)
+            max_line_width = self.width - x_start - 2 - display_width(prefix)
+
+            # Scroll or truncate combined text
+            if is_selected:
+                display_text = self._get_scrolled_text(full_text, max_line_width, True)
+            else:
+                display_text = truncate_to_width(full_text, max_line_width)
+
+            if is_selected:
+                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
+                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+            else:
+                self.stdscr.addstr(y, x_start, f"{prefix}{display_text}",
+                                 curses.color_pair(COLOR_NORMAL))
 
         self.draw_footer("↑", "↓", "Play", "Back")
         self.stdscr.refresh()
 
     def handle_input(self, key):
         if key == curses.KEY_UP:
-            if self.active_panel == "albums":
-                self.album_index = max(0, self.album_index - 1)
-            else:
-                self.song_index = max(0, self.song_index - 1)
+            self.song_index = max(0, self.song_index - 1)
 
         elif key == curses.KEY_DOWN:
-            if self.active_panel == "albums":
-                self.album_index = min(len(self.albums) - 1, self.album_index + 1)
-            elif self.songs:
-                self.song_index = min(len(self.songs) - 1, self.song_index + 1)
+            self.song_index = min(len(self.songs) - 1, self.song_index + 1)
 
         elif key == ord('\n'):  # Enter
-            if self.active_panel == "albums":
-                return ("load_album", self.albums[self.album_index]['id'])
-            else:
-                return ("play_song", self.songs[self.song_index])
+            return ("play_song", self.songs[self.song_index])
 
         elif key == curses.KEY_BACKSPACE or key == 127:
-            if self.active_panel == "songs":
-                self.songs = []
-                self.active_panel = "albums"
-            else:
-                return "back"
+            return "back"
 
         elif key == ord('q') or key == ord('Q'):
             return False
 
         return True
-    
+
     # Button support
     def on_up(self):
-        if self.active_panel == "albums":
-            self.album_index = max(0, self.album_index - 1)
-        else:
-            self.song_index = max(0, self.song_index - 1)
+        self.song_index = max(0, self.song_index - 1)
         self.draw()
-    
+
     def on_down(self):
-        if self.active_panel == "albums":
-            self.album_index = min(len(self.albums) - 1, self.album_index + 1)
-        elif self.songs:
-            self.song_index = min(len(self.songs) - 1, self.song_index + 1)
+        self.song_index = min(len(self.songs) - 1, self.song_index + 1)
         self.draw()
-    
+
     def on_select(self):
-        if self.active_panel == "albums":
-            self._pending_action = ("load_album", self.albums[self.album_index]['id'])
-        else:
-            self._pending_action = ("play_song", self.songs[self.song_index])
-    
+        self._pending_action = ("play_song", self.songs[self.song_index])
+
     def on_back(self):
-        if self.active_panel == "songs":
-            self.songs = []
-            self.active_panel = "albums"
-            self.draw()
-        else:
-            self._pending_action = "back"
+        self._pending_action = "back"
 
 
 class NowPlayingScreen(BaseScreen):
@@ -441,7 +444,7 @@ class NowPlayingScreen(BaseScreen):
 
     def draw(self):
         self.stdscr.clear()
-        self.draw_status_bar("Now Playing", battery_percent=85)
+        self.draw_status_bar("Now Playing")
 
         if self.player.current_song:
             song = self.player.current_song
@@ -469,9 +472,25 @@ class NowPlayingScreen(BaseScreen):
                     finally:
                         self.last_song_id = song_id
 
-            # Don't display album art for now (too big)
-            # TODO: Add album art display when screen size is optimized
-            info_x_offset = 2
+            # Display album art if available
+            art_width = 20
+            art_height = 10
+            art_x_offset = 2
+            info_x_offset = art_x_offset + art_width + 2
+
+            # Try to display album art
+            if self.current_art_path:
+                try:
+                    art_lines = self.album_art.get_ascii_art(self.current_art_path, art_width, art_height)
+                    art_y = 3
+                    for i, line in enumerate(art_lines):
+                        if art_y + i < self.height - 2:
+                            try:
+                                self.stdscr.addstr(art_y + i, art_x_offset, line[:art_width])
+                            except:
+                                pass  # Ignore errors from characters that don't fit
+                except:
+                    pass  # Silently fail if album art can't be displayed
 
             # Song info
             info_y = 3
@@ -492,8 +511,8 @@ class NowPlayingScreen(BaseScreen):
             self.stdscr.addstr(info_y + 10, info_x_offset, status,
                              curses.color_pair(COLOR_PLAYING) | curses.A_BOLD)
 
-            # Volume
-            vol_percent = int(self.player.volume * 100)
+            # Volume (player.volume is already 0-100 in VLC)
+            vol_percent = int(self.player.volume)
             self.stdscr.addstr(info_y + 11, info_x_offset, f"Volume: {vol_percent}%")
         else:
             self.stdscr.addstr(self.height // 2, 2, "No song playing")
@@ -505,22 +524,22 @@ class NowPlayingScreen(BaseScreen):
         if key == ord(' '):  # Spacebar
             self.player.toggle_pause()
         elif key == curses.KEY_UP:
-            self.player.volume_up(0.1)
+            self.player.volume_up()
         elif key == curses.KEY_DOWN:
-            self.player.volume_down(0.1)
+            self.player.volume_down()
         elif key == curses.KEY_BACKSPACE or key == 127:
             return "back"
         elif key == ord('q') or key == ord('Q'):
             return False
         return True
-    
+
     # Button support
     def on_up(self):
-        self.player.volume_up(0.1)
+        self.player.volume_up()
         self.draw()
-    
+
     def on_down(self):
-        self.player.volume_down(0.1)
+        self.player.volume_down()
         self.draw()
     
     def on_select(self):
@@ -631,7 +650,8 @@ class BluetoothSettingsScreen(BaseScreen):
 
         if self.devices:
             for i, (mac, name, paired) in enumerate(self.devices):
-                if y >= self.height - 3:
+                # Make sure we don't draw beyond the footer
+                if y >= self.height - 2:
                     break
 
                 list_index = i + device_offset
