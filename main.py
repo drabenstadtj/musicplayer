@@ -1,3 +1,4 @@
+
 import curses
 from player.navidrome import NavidromeClient
 from ui.screens import MainMenuScreen, AlbumBrowserScreen, SongListScreen, NowPlayingScreen, BluetoothSettingsScreen
@@ -264,7 +265,10 @@ class MusicPlayerApp:
             if self.should_return_to_now_playing:
                 self.should_return_to_now_playing = False
                 self.show_now_playing()
-                break
+                # Restore current_screen to bt_settings after returning
+                self.current_screen = bt_settings
+                bt_settings.draw()
+                continue
 
             key = self.stdscr.getch()
 

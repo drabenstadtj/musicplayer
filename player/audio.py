@@ -83,7 +83,9 @@ class AudioPlayer:
             self.instance = vlc.Instance(
                 '--aout=pulse',              # Use PulseAudio for audio output
                 '--verbose=0',               # Minimal logging
-                '--network-caching=10000'    # 10 second buffer for streaming (reduce choppiness)
+                '--network-caching=30000',   # 30 second buffer for streaming (reduce choppiness)
+                '--file-caching=10000',      # 10 second file cache
+                '--live-caching=10000'       # 10 second live stream cache
             )
             self._log(f"VLC instance created: {self.instance}")
 
