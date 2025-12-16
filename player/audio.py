@@ -105,20 +105,14 @@ class AudioPlayer:
 
             self._log(f"VLC args: {vlc_args}")
 
-            # Try creating instance with error capture
-            import sys
-            from io import StringIO
-            old_stderr = sys.stderr
-            sys.stderr = captured_stderr = StringIO()
+            # Try creating instance without args first
+            self._log("Trying VLC Instance with no args...")
+            test_instance = vlc.Instance()
+            self._log(f"No-args instance: {test_instance}")
 
-            try:
-                self.instance = vlc.Instance(*vlc_args)
-            finally:
-                sys.stderr = old_stderr
-                stderr_output = captured_stderr.getvalue()
-                if stderr_output:
-                    self._log(f"VLC stderr output:\n{stderr_output}")
-
+            # Now try with our args
+            self._log("Trying VLC Instance with args...")
+            self.instance = vlc.Instance(*vlc_args)
             self._log(f"VLC instance created: {self.instance}")
 
             if self.instance is None:
