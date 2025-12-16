@@ -16,6 +16,7 @@ class AudioPlayer:
             # Create VLC instance with PulseAudio output and optimized buffering
             # Increase network caching to reduce choppy playback
             # Increase audio buffer for smoother output
+            self._log("Creating VLC instance...")
             self.instance = vlc.Instance(
                 '--aout=pulse',
                 '--verbose=0',
@@ -24,7 +25,18 @@ class AudioPlayer:
                 '--clock-jitter=1000',         # Allow 1s clock jitter
                 '--audio-resampler=soxr',      # High quality resampler
             )
+
+            self._log(f"VLC instance created: {self.instance}")
+
+            if self.instance is None:
+                raise Exception("VLC Instance() returned None - VLC libraries not properly installed")
+
+            self._log("Creating media player...")
             self.player = self.instance.media_player_new()
+
+            if self.player is None:
+                raise Exception("media_player_new() returned None")
+
             self.audio_available = True
             self._log("✓ Audio initialized with VLC + PulseAudio backend")
         except Exception as e:
