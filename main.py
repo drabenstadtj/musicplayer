@@ -237,8 +237,10 @@ class MusicPlayerApp:
                 result = now_playing._pending_action
                 now_playing._pending_action = None
 
-            if result == False or result == "back":
-                break
+            if result == False:
+                return  # Exit and return to previous screen
+            elif result == "back":
+                return  # Exit and return to previous screen
 
             now_playing.draw()
 
