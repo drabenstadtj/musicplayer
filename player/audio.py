@@ -1,6 +1,9 @@
 import os
 import subprocess
 import time
+from utils.logger import get_logger
+
+logger = get_logger("audio")
 
 # Set library path before importing vlc
 # Common locations for libvlc on Raspberry Pi
@@ -33,40 +36,36 @@ except Exception as e:
 # Debug VLC loading
 def _debug_vlc():
     """Debug VLC library loading"""
-    logfile = open('/tmp/musicplayer_audio.log', 'a')
+    logger.info("=== VLC Debug Info ===")
+    logger.info(f"VLC import success: {vlc_import_success}")
+    if not vlc_import_success:
+        logger.error(f"VLC import error: {vlc_import_error}")
+        return
+
+    logger.info(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', 'NOT SET')}")
+    if vlc:
+        logger.info(f"VLC module path: {vlc.__file__}")
+
+    # Try to get VLC version
     try:
-        logfile.write(f"VLC import success: {vlc_import_success}\n")
-        if not vlc_import_success:
-            logfile.write(f"VLC import error: {vlc_import_error}\n")
-            return
+        if vlc:
+            logger.info(f"VLC version: {vlc.libvlc_get_version()}")
+    except Exception as e:
+        logger.warning(f"Could not get VLC version: {e}")
 
-        logfile.write(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', 'NOT SET')}\n")
-        logfile.write(f"VLC module path: {vlc.__file__}\n")
-
-        # Try to get VLC version
-        try:
-            logfile.write(f"VLC version: {vlc.libvlc_get_version()}\n")
-        except Exception as e:
-            logfile.write(f"Could not get VLC version: {e}\n")
-
-        # Try to find libvlc.so
+    # Try to find libvlc.so
+    try:
         import ctypes.util
         libvlc_path = ctypes.util.find_library('vlc')
-        logfile.write(f"libvlc.so location: {libvlc_path}\n")
-
+        logger.info(f"libvlc.so location: {libvlc_path}")
     except Exception as e:
-        logfile.write(f"VLC debug error: {e}\n")
-    finally:
-        logfile.flush()
-        logfile.close()
+        logger.error(f"VLC debug error: {e}")
 
 _debug_vlc()
 
 class AudioPlayer:
     def __init__(self):
-        # Open log file for debugging
-        self.logfile = open('/tmp/musicplayer_audio.log', 'a')
-        self._log("=== AudioPlayer Init ===")
+        logger.info("=== AudioPlayer Init ===")
 
         # Try to set Bluetooth as default sink before initializing VLC
         self._ensure_bluetooth_sink()
@@ -75,7 +74,7 @@ class AudioPlayer:
             # Create VLC instance with PulseAudio output and optimized buffering
             # Increase network caching to reduce choppy playback
             # Increase audio buffer for smoother output
-            self._log("Creating VLC instance...")
+            logger.info("Creating VLC instance...")
 
             # Create VLC instance with working args
             # Note: Some args like --audio-buffer, --clock-jitter, --audio-resampler
@@ -87,22 +86,22 @@ class AudioPlayer:
                 '--file-caching=10000',      # 10 second file cache
                 '--live-caching=10000'       # 10 second live stream cache
             )
-            self._log(f"VLC instance created: {self.instance}")
+            logger.info(f"VLC instance created: {self.instance}")
 
             if self.instance is None:
                 raise Exception("VLC Instance() returned None - VLC libraries not properly installed")
 
-            self._log("Creating media player...")
+            logger.info("Creating media player...")
             self.player = self.instance.media_player_new()
 
             if self.player is None:
                 raise Exception("media_player_new() returned None")
 
             self.audio_available = True
-            self._log("✓ Audio initialized with VLC + PulseAudio backend")
+            logger.info("✓ Audio initialized with VLC + PulseAudio backend")
         except Exception as e:
-            self._log(f"Warning: Could not initialize audio device: {e}")
-            self._log("Running in silent mode - no audio output available")
+            logger.error(f"Could not initialize audio device: {e}")
+            logger.warning("Running in silent mode - no audio output available")
             self.audio_available = False
             raise  # Re-raise to trigger fallback to mock player
 
@@ -113,11 +112,7 @@ class AudioPlayer:
 
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
-
-    def _log(self, message):
-        """Write to log file"""
-        self.logfile.write(f"{message}\n")
-        self.logfile.flush()
+            logger.info(f"Initial volume set to {self.volume}")
 
     def _ensure_bluetooth_sink(self):
         """Ensure Bluetooth sink is set as default if available"""
@@ -130,27 +125,27 @@ class AudioPlayer:
                 timeout=2
             )
 
-            self._log("Available sinks:")
-            self._log(result.stdout)
+            logger.debug("Available PulseAudio sinks:")
+            logger.debug(result.stdout)
 
             # Look for bluez sink
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if len(parts) >= 2 and 'bluez' in parts[1].lower():
                     bluez_sink = parts[1]
-                    self._log(f"Found Bluetooth sink: {bluez_sink}")
+                    logger.info(f"Found Bluetooth sink: {bluez_sink}")
                     # Set as default
                     subprocess.run(['pactl', 'set-default-sink', bluez_sink], timeout=2)
-                    self._log(f"Set {bluez_sink} as default audio sink")
+                    logger.info(f"Set {bluez_sink} as default audio sink")
 
                     # Set the PULSE_SINK environment variable for this process
                     os.environ['PULSE_SINK'] = bluez_sink
-                    self._log(f"Set PULSE_SINK environment variable to {bluez_sink}")
+                    logger.info(f"Set PULSE_SINK environment variable to {bluez_sink}")
                     return
 
-            self._log("No Bluetooth sink found - using default")
+            logger.info("No Bluetooth sink found - using default audio sink")
         except Exception as e:
-            self._log(f"Could not set Bluetooth sink: {e}")
+            logger.warning(f"Could not set Bluetooth sink: {e}")
 
     def play(self, stream_url, song_info):
         """Stream a song from URL"""
@@ -158,12 +153,13 @@ class AudioPlayer:
         self.current_song = song_info
 
         try:
-            self._log(f"\n=== Attempting to stream ===")
-            self._log(f"Song: {song_info.get('title', 'Unknown')}")
-            self._log(f"URL: {stream_url}")
+            logger.info(f"=== Attempting to stream ===")
+            logger.info(f"Song: {song_info.get('title', 'Unknown')}")
+            logger.info(f"Artist: {song_info.get('artist', 'Unknown')}")
+            logger.debug(f"URL: {stream_url}")
 
             if not self.audio_available:
-                self._log("⚠ Audio not available - simulating playback")
+                logger.warning("⚠ Audio not available - simulating playback")
                 self.is_playing = True
                 self.is_paused = False
                 return True
@@ -171,11 +167,11 @@ class AudioPlayer:
             # Stop current playback
             self.stop()
 
-            self._log("Creating media from URL...")
+            logger.debug("Creating media from URL...")
             media = self.instance.media_new(stream_url)
             self.player.set_media(media)
 
-            self._log("Starting stream playback...")
+            logger.info("Starting stream playback...")
             self.player.play()
 
             self.is_playing = True
@@ -185,34 +181,32 @@ class AudioPlayer:
             for i in range(10):  # Check for up to 5 seconds
                 time.sleep(0.5)
                 state = self.player.get_state()
-                self._log(f"VLC state after {(i+1)*0.5}s: {state}")
+                logger.debug(f"VLC state after {(i+1)*0.5}s: {state}")
 
                 # VLC states: 0=NothingSpecial, 1=Opening, 2=Buffering, 3=Playing, 4=Paused, 5=Stopped, 6=Ended, 7=Error
                 if state == 3:  # Playing
-                    self._log("✓ VLC is now playing!")
+                    logger.info("✓ VLC is now playing!")
                     break
                 elif state == 7:  # Error
-                    self._log("✗ VLC encountered an error!")
+                    logger.error("✗ VLC encountered an error!")
                     break
 
             # Check if audio stream was created in PulseAudio
             result = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'],
                                   capture_output=True, text=True, timeout=2)
             if result.stdout.strip():
-                self._log(f"✓ Audio stream active: {result.stdout.strip()}")
+                logger.debug(f"✓ Audio stream active: {result.stdout.strip()}")
             else:
-                self._log("WARNING: No PulseAudio sink-input detected!")
-                self._log("This could mean VLC is not outputting to PulseAudio.")
+                logger.warning("No PulseAudio sink-input detected!")
+                logger.warning("This could mean VLC is not outputting to PulseAudio.")
 
                 # Check what audio output VLC is using
-                self._log(f"VLC audio output module: {self.player.audio_output_device_enum()}")
+                logger.debug(f"VLC audio output module: {self.player.audio_output_device_enum()}")
 
             return True
 
         except Exception as e:
-            self._log(f"✗ Error streaming song: {e}")
-            import traceback
-            self._log(traceback.format_exc())
+            logger.error(f"✗ Error streaming song: {e}", exc_info=True)
             # Keep current_song set so UI can display info
             self.is_playing = False
             return False
@@ -224,6 +218,7 @@ class AudioPlayer:
             return
 
         if self.is_playing and not self.is_paused:
+            logger.info("Pausing playback")
             self.player.pause()
             self.is_paused = True
 
@@ -234,6 +229,7 @@ class AudioPlayer:
             return
 
         if self.is_playing and self.is_paused:
+            logger.info("Resuming playback")
             self.player.pause()  # VLC's pause() toggles, so call again to unpause
             self.is_paused = False
 
@@ -247,6 +243,7 @@ class AudioPlayer:
     def stop(self):
         """Stop playback"""
         if self.audio_available:
+            logger.info("Stopping playback")
             self.player.stop()
 
         self.is_playing = False
@@ -256,18 +253,23 @@ class AudioPlayer:
         """Set volume (0.0 to 2.0)"""
         # Convert 0.0-2.0 to 0-200 for VLC (allows amplification above 100%)
         self.volume = max(0, min(200, int(volume * 100)))
+        logger.debug(f"Setting volume to {self.volume}")
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
 
     def volume_up(self, step=10):
         """Increase volume"""
+        old_volume = self.volume
         self.volume = max(0, min(200, self.volume + step))
+        logger.debug(f"Volume up: {old_volume} -> {self.volume}")
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
 
     def volume_down(self, step=10):
         """Decrease volume"""
+        old_volume = self.volume
         self.volume = max(0, min(200, self.volume - step))
+        logger.debug(f"Volume down: {old_volume} -> {self.volume}")
         if self.audio_available:
             self.player.audio_set_volume(self.volume)
 

@@ -3,6 +3,9 @@ import hashlib
 import random
 import string
 import config
+from utils.logger import get_logger
+
+logger = get_logger("network")
 
 class NavidromeClient:
     def __init__(self):
@@ -16,11 +19,11 @@ class NavidromeClient:
         """Make authenticated request to Navidrome"""
         if params is None:
             params = {}
-        
+
         # Generate authentication token
         salt = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
         token = hashlib.md5((self.password + salt).encode()).hexdigest()
-        
+
         # Add required params
         params.update({
             'u': self.username,
@@ -30,25 +33,30 @@ class NavidromeClient:
             'c': self.client_name,
             'f': 'json'
         })
-        
+
         url = f"{self.base_url}/rest/{endpoint}"
-        
+        logger.debug(f"API Request: {endpoint}")
+
         try:
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
-            
+
             # Check for Subsonic API errors
             subsonic_response = data.get('subsonic-response', {})
             if subsonic_response.get('status') == 'failed':
                 error = subsonic_response.get('error', {})
+                logger.error(f"API Error on {endpoint}: {error.get('message', 'Unknown error')}")
                 raise Exception(f"API Error: {error.get('message', 'Unknown error')}")
-            
+
+            logger.debug(f"API Response: {endpoint} - success")
             return subsonic_response
-        
+
         except requests.exceptions.Timeout:
+            logger.error(f"Request timed out: {endpoint}")
             raise Exception("Request timed out")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {endpoint} - {e}")
             raise Exception(f"Request failed: {e}")
     
     def test_connection(self):
@@ -99,11 +107,51 @@ class NavidromeClient:
 
         return all_albums
     
+    def get_artists(self):
+        """Get list of all artists"""
+        try:
+            response = self._make_request('getArtists')
+            # The response has a nested structure: artists -> index -> artist
+            artists_data = response.get('artists', {})
+            index_list = artists_data.get('index', [])
+
+            # Flatten the artist list from all indexes
+            all_artists = []
+            for index in index_list:
+                artists = index.get('artist', [])
+                if isinstance(artists, list):
+                    all_artists.extend(artists)
+                else:
+                    all_artists.append(artists)
+
+            return all_artists
+        except Exception as e:
+            print(f"Error fetching artists: {e}")
+            return []
+
+    def get_artist_albums(self, artist_id):
+        """Get albums for a specific artist"""
+        try:
+            response = self._make_request('getArtist', {'id': artist_id})
+            artist_data = response.get('artist', {})
+            albums = artist_data.get('album', [])
+            # Ensure it's always a list
+            if not isinstance(albums, list):
+                albums = [albums] if albums else []
+            return albums
+        except Exception as e:
+            print(f"Error fetching artist albums: {e}")
+            return []
+
     def get_playlists(self):
         """Get list of playlists"""
         try:
             response = self._make_request('getPlaylists')
-            return response.get('playlists', {}).get('playlist', [])
+            playlists = response.get('playlists', {}).get('playlist', [])
+            # Ensure it's always a list
+            if not isinstance(playlists, list):
+                playlists = [playlists] if playlists else []
+            return playlists
         except Exception as e:
             print(f"Error fetching playlists: {e}")
             return []

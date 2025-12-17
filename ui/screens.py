@@ -809,3 +809,265 @@ class BluetoothSettingsScreen(BaseScreen):
 
     def on_back(self):
         self._pending_action = "back"
+
+
+class ArtistBrowserScreen(BaseScreen):
+    """Artist browser screen - displays list of artists"""
+    def __init__(self, stdscr, artists):
+        super().__init__(stdscr)
+        self.artists = sorted(artists, key=lambda x: x.get('name', '').lower())
+        self.artist_index = 0
+        self.scroll_offset = 0
+        self.scroll_frame = 0
+        self.last_artist_index = 0
+
+    def _get_scrolled_text(self, text, max_width, is_selected):
+        """Get scrolling text for selected items"""
+        text_width = display_width(text)
+
+        if not is_selected or text_width <= max_width:
+            return truncate_to_width(text, max_width)
+
+        # Create circular scrolling effect
+        scrolling_text = text + "   " + text  # Add spacing before loop
+
+        self.scroll_frame += 1
+        if self.scroll_frame >= 8:  # Scroll every 8 frames (~0.8s)
+            self.scroll_offset = (self.scroll_offset + 1) % (text_width + 3)
+            self.scroll_frame = 0
+
+        # Calculate which part of scrolling_text to show
+        start_offset = self.scroll_offset
+        visible_text = ""
+        current_width = 0
+        char_index = 0
+
+        # Skip to starting offset
+        temp_offset = 0
+        while temp_offset < start_offset and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            temp_offset += char_width
+            char_index += 1
+
+        # Collect visible characters
+        while current_width < max_width and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            if current_width + char_width > max_width:
+                break
+            visible_text += char
+            current_width += char_width
+            char_index += 1
+
+        return visible_text
+
+    def draw(self):
+        # Reset scroll if selection changed
+        if self.artist_index != self.last_artist_index:
+            self.scroll_offset = 0
+            self.scroll_frame = 0
+            self.last_artist_index = self.artist_index
+
+        self.stdscr.clear()
+        self.draw_status_bar("Artists")
+
+        # Draw artists (full width)
+        self.stdscr.addstr(2, 2, "Artists:", curses.A_BOLD)
+        start = max(0, self.artist_index - 5)
+        for i in range(start, min(len(self.artists), start + 10)):
+            y = 4 + (i - start)
+            if y >= self.height - 2:
+                break
+
+            artist = self.artists[i]
+            artist_name = artist.get('name', 'Unknown Artist')
+            album_count = artist.get('albumCount', 0)
+
+            # Format display
+            is_selected = i == self.artist_index
+            prefix = "> " if is_selected else "  "
+            x_start = 2
+
+            # Calculate max width for content
+            max_line_width = self.width - x_start - 2 - display_width(prefix)
+
+            # Add album count
+            count_text = f" ({album_count} albums)"
+            display_text = artist_name + count_text
+
+            if is_selected:
+                scrolled_text = self._get_scrolled_text(display_text, max_line_width, True)
+                self.stdscr.addstr(y, x_start, f"{prefix}{scrolled_text}",
+                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+            else:
+                truncated_text = truncate_to_width(display_text, max_line_width)
+                self.stdscr.addstr(y, x_start, f"{prefix}{truncated_text}",
+                                 curses.color_pair(COLOR_NORMAL))
+
+        self.draw_footer("↑", "↓", "Select", "Back")
+        self.stdscr.refresh()
+
+    def handle_input(self, key):
+        if key == curses.KEY_UP:
+            self.artist_index = max(0, self.artist_index - 1)
+
+        elif key == curses.KEY_DOWN:
+            self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
+
+        elif key == ord('\n'):  # Enter
+            return ("select_artist", self.artists[self.artist_index])
+
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            return "back"
+
+        elif key == ord('q') or key == ord('Q'):
+            return False
+
+        return True
+
+    # Button support
+    def on_up(self):
+        self.artist_index = max(0, self.artist_index - 1)
+        self.draw()
+
+    def on_down(self):
+        self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
+        self.draw()
+
+    def on_select(self):
+        self._pending_action = ("select_artist", self.artists[self.artist_index])
+
+    def on_back(self):
+        self._pending_action = "back"
+
+
+class PlaylistBrowserScreen(BaseScreen):
+    """Playlist browser screen - displays list of playlists"""
+    def __init__(self, stdscr, playlists):
+        super().__init__(stdscr)
+        self.playlists = sorted(playlists, key=lambda x: x.get('name', '').lower())
+        self.playlist_index = 0
+        self.scroll_offset = 0
+        self.scroll_frame = 0
+        self.last_playlist_index = 0
+
+    def _get_scrolled_text(self, text, max_width, is_selected):
+        """Get scrolling text for selected items"""
+        text_width = display_width(text)
+
+        if not is_selected or text_width <= max_width:
+            return truncate_to_width(text, max_width)
+
+        # Create circular scrolling effect
+        scrolling_text = text + "   " + text  # Add spacing before loop
+
+        self.scroll_frame += 1
+        if self.scroll_frame >= 8:  # Scroll every 8 frames (~0.8s)
+            self.scroll_offset = (self.scroll_offset + 1) % (text_width + 3)
+            self.scroll_frame = 0
+
+        # Calculate which part of scrolling_text to show
+        start_offset = self.scroll_offset
+        visible_text = ""
+        current_width = 0
+        char_index = 0
+
+        # Skip to starting offset
+        temp_offset = 0
+        while temp_offset < start_offset and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            temp_offset += char_width
+            char_index += 1
+
+        # Collect visible characters
+        while current_width < max_width and char_index < len(scrolling_text):
+            char = scrolling_text[char_index]
+            char_width = 2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1
+            if current_width + char_width > max_width:
+                break
+            visible_text += char
+            current_width += char_width
+            char_index += 1
+
+        return visible_text
+
+    def draw(self):
+        # Reset scroll if selection changed
+        if self.playlist_index != self.last_playlist_index:
+            self.scroll_offset = 0
+            self.scroll_frame = 0
+            self.last_playlist_index = self.playlist_index
+
+        self.stdscr.clear()
+        self.draw_status_bar("Playlists")
+
+        # Draw playlists (full width)
+        self.stdscr.addstr(2, 2, "Playlists:", curses.A_BOLD)
+        start = max(0, self.playlist_index - 5)
+        for i in range(start, min(len(self.playlists), start + 10)):
+            y = 4 + (i - start)
+            if y >= self.height - 2:
+                break
+
+            playlist = self.playlists[i]
+            playlist_name = playlist.get('name', 'Unknown Playlist')
+            song_count = playlist.get('songCount', 0)
+
+            # Format display
+            is_selected = i == self.playlist_index
+            prefix = "> " if is_selected else "  "
+            x_start = 2
+
+            # Calculate max width for content
+            max_line_width = self.width - x_start - 2 - display_width(prefix)
+
+            # Add song count
+            count_text = f" ({song_count} songs)"
+            display_text = playlist_name + count_text
+
+            if is_selected:
+                scrolled_text = self._get_scrolled_text(display_text, max_line_width, True)
+                self.stdscr.addstr(y, x_start, f"{prefix}{scrolled_text}",
+                                 curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+            else:
+                truncated_text = truncate_to_width(display_text, max_line_width)
+                self.stdscr.addstr(y, x_start, f"{prefix}{truncated_text}",
+                                 curses.color_pair(COLOR_NORMAL))
+
+        self.draw_footer("↑", "↓", "Select", "Back")
+        self.stdscr.refresh()
+
+    def handle_input(self, key):
+        if key == curses.KEY_UP:
+            self.playlist_index = max(0, self.playlist_index - 1)
+
+        elif key == curses.KEY_DOWN:
+            self.playlist_index = min(len(self.playlists) - 1, self.playlist_index + 1)
+
+        elif key == ord('\n'):  # Enter
+            return ("select_playlist", self.playlists[self.playlist_index])
+
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            return "back"
+
+        elif key == ord('q') or key == ord('Q'):
+            return False
+
+        return True
+
+    # Button support
+    def on_up(self):
+        self.playlist_index = max(0, self.playlist_index - 1)
+        self.draw()
+
+    def on_down(self):
+        self.playlist_index = min(len(self.playlists) - 1, self.playlist_index + 1)
+        self.draw()
+
+    def on_select(self):
+        self._pending_action = ("select_playlist", self.playlists[self.playlist_index])
+
+    def on_back(self):
+        self._pending_action = "back"
