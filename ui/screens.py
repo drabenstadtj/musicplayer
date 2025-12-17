@@ -893,7 +893,7 @@ class ArtistBrowserScreen(BaseScreen):
         return ''
 
     def jump_to_next_category(self):
-        """Jump to the next letter category"""
+        """Jump to the next letter category (forward: A->B->C)"""
         if not self.category_list:
             return
 
@@ -910,6 +910,25 @@ class ArtistBrowserScreen(BaseScreen):
             # If current letter not in list, jump to first category
             if self.category_list:
                 self.artist_index = self.letter_categories[self.category_list[0]]
+
+    def jump_to_prev_category(self):
+        """Jump to the previous letter category (backward: C->B->A)"""
+        if not self.category_list:
+            return
+
+        # Find current category
+        current_letter = self.get_current_letter()
+        try:
+            current_idx = self.category_list.index(current_letter)
+            # Jump to previous category (wrap around)
+            prev_idx = (current_idx - 1) % len(self.category_list)
+            prev_letter = self.category_list[prev_idx]
+            # Set artist_index to first artist in that category
+            self.artist_index = self.letter_categories[prev_letter]
+        except (ValueError, KeyError):
+            # If current letter not in list, jump to last category
+            if self.category_list:
+                self.artist_index = self.letter_categories[self.category_list[-1]]
 
     def draw(self):
         # Reset scroll if selection changed

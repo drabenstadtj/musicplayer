@@ -63,9 +63,9 @@ class ButtonController:
             self._on_now_playing_combo()
             return
 
-        # Check for combo: UP + SELECT (category jump in artist browser)
+        # Check for combo: UP + SELECT (jump to previous category)
         if self.button_states[Button.SELECT]:
-            self._on_category_jump_combo()
+            self._on_category_jump_prev()
             return
 
         screen = self._get_current_screen()
@@ -87,9 +87,14 @@ class ButtonController:
     def _on_select(self):
         """Handle SELECT button press"""
         self.button_states[Button.SELECT] = True
-        # Check for combo: DOWN + SELECT or UP + SELECT (category jump in artist browser)
-        if self.button_states[Button.DOWN] or self.button_states[Button.UP]:
-            self._on_category_jump_combo()
+        # Check for combo: DOWN + SELECT (jump to next category)
+        if self.button_states[Button.DOWN]:
+            self._on_category_jump_next()
+            return
+
+        # Check for combo: UP + SELECT (jump to previous category)
+        if self.button_states[Button.UP]:
+            self._on_category_jump_prev()
             return
 
         screen = self._get_current_screen()
@@ -123,13 +128,24 @@ class ButtonController:
         if hasattr(self.app, 'return_to_now_playing'):
             self.app.return_to_now_playing()
 
-    def _on_category_jump_combo(self):
+    def _on_category_jump_next(self):
         """Handle DOWN + SELECT combo to jump to next letter category"""
-        logger.debug("Category jump combo pressed (DOWN + SELECT)")
+        logger.debug("Category jump next combo pressed (DOWN + SELECT)")
         screen = self._get_current_screen()
         if screen and hasattr(screen, 'jump_to_next_category'):
             logger.info("Jumping to next letter category")
             screen.jump_to_next_category()
+            # Redraw screen to show new position
+            if hasattr(screen, 'draw'):
+                screen.draw()
+
+    def _on_category_jump_prev(self):
+        """Handle UP + SELECT combo to jump to previous letter category"""
+        logger.debug("Category jump prev combo pressed (UP + SELECT)")
+        screen = self._get_current_screen()
+        if screen and hasattr(screen, 'jump_to_prev_category'):
+            logger.info("Jumping to previous letter category")
+            screen.jump_to_prev_category()
             # Redraw screen to show new position
             if hasattr(screen, 'draw'):
                 screen.draw()
