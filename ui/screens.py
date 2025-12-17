@@ -812,7 +812,7 @@ class BluetoothSettingsScreen(BaseScreen):
 
 
 class ArtistBrowserScreen(BaseScreen):
-    """Artist browser screen - displays list of artists"""
+    """Artist browser screen - displays list of artists with letter categories"""
     def __init__(self, stdscr, artists):
         super().__init__(stdscr)
         self.artists = sorted(artists, key=lambda x: x.get('name', '').lower())
@@ -820,6 +820,26 @@ class ArtistBrowserScreen(BaseScreen):
         self.scroll_offset = 0
         self.scroll_frame = 0
         self.last_artist_index = 0
+
+        # Build letter category index
+        self.letter_categories = {}
+        self.category_list = []
+
+        for i, artist in enumerate(self.artists):
+            name = artist.get('name', '')
+            if name:
+                first_letter = name[0].upper()
+                # Group non-alphabetic characters as '#'
+                if not first_letter.isalpha():
+                    first_letter = '#'
+
+                if first_letter not in self.letter_categories:
+                    self.letter_categories[first_letter] = i
+                    self.category_list.append(first_letter)
+
+        # Sort categories (# first, then A-Z)
+        self.category_list.sort(key=lambda x: ('0' if x == '#' else x))
+        self.current_category_index = 0
 
     def _get_scrolled_text(self, text, max_width, is_selected):
         """Get scrolling text for selected items"""
@@ -862,6 +882,35 @@ class ArtistBrowserScreen(BaseScreen):
 
         return visible_text
 
+    def get_current_letter(self):
+        """Get the letter category for the current artist"""
+        if not self.artists or self.artist_index >= len(self.artists):
+            return ''
+        name = self.artists[self.artist_index].get('name', '')
+        if name:
+            first_letter = name[0].upper()
+            return '#' if not first_letter.isalpha() else first_letter
+        return ''
+
+    def jump_to_next_category(self):
+        """Jump to the next letter category"""
+        if not self.category_list:
+            return
+
+        # Find current category
+        current_letter = self.get_current_letter()
+        try:
+            current_idx = self.category_list.index(current_letter)
+            # Jump to next category (wrap around)
+            next_idx = (current_idx + 1) % len(self.category_list)
+            next_letter = self.category_list[next_idx]
+            # Set artist_index to first artist in that category
+            self.artist_index = self.letter_categories[next_letter]
+        except (ValueError, KeyError):
+            # If current letter not in list, jump to first category
+            if self.category_list:
+                self.artist_index = self.letter_categories[self.category_list[0]]
+
     def draw(self):
         # Reset scroll if selection changed
         if self.artist_index != self.last_artist_index:
@@ -870,19 +919,43 @@ class ArtistBrowserScreen(BaseScreen):
             self.last_artist_index = self.artist_index
 
         self.stdscr.clear()
-        self.draw_status_bar("Artists")
+
+        # Show current letter category in status bar
+        current_letter = self.get_current_letter()
+        status_text = f"Artists [{current_letter}]" if current_letter else "Artists"
+        self.draw_status_bar(status_text)
 
         # Draw artists (full width)
         self.stdscr.addstr(2, 2, "Artists:", curses.A_BOLD)
-        start = max(0, self.artist_index - 5)
-        for i in range(start, min(len(self.artists), start + 10)):
-            y = 4 + (i - start)
+
+        # Show letter category indicators on line 3
+        if self.category_list:
+            categories_display = " ".join(self.category_list)
+            max_cat_width = self.width - 6
+            if display_width(categories_display) > max_cat_width:
+                categories_display = truncate_to_width(categories_display, max_cat_width)
+            self.stdscr.addstr(3, 2, categories_display, curses.color_pair(COLOR_NORMAL))
+
+        start = max(0, self.artist_index - 4)
+        for i in range(start, min(len(self.artists), start + 9)):
+            y = 5 + (i - start)
             if y >= self.height - 2:
                 break
 
             artist = self.artists[i]
             artist_name = artist.get('name', 'Unknown Artist')
             album_count = artist.get('albumCount', 0)
+
+            # Show letter category header if this is the first artist in a new letter
+            if i == 0 or artist_name[0].upper() != self.artists[i-1].get('name', ' ')[0].upper():
+                letter = artist_name[0].upper() if artist_name[0].isalpha() else '#'
+                # Only show header if we're at the start of visible range or category changed
+                if i == start or (i > 0 and artist_name[0].upper() != self.artists[i-1].get('name', ' ')[0].upper()):
+                    # Draw category header
+                    self.stdscr.addstr(y, 2, f"--- {letter} ---", curses.A_DIM)
+                    y += 1
+                    if y >= self.height - 2:
+                        break
 
             # Format display
             is_selected = i == self.artist_index

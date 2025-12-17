@@ -4,6 +4,9 @@ Connects hardware buttons to UI navigation and player controls
 """
 
 from hardware.buttons import Button, ButtonEvent, get_button_handler
+from utils.logger import get_logger
+
+logger = get_logger("hardware")
 
 
 class ButtonController:
@@ -66,12 +69,24 @@ class ButtonController:
     
     def _on_down(self):
         """Handle DOWN button press"""
+        self.button_states[Button.DOWN] = True
+        # Check for combo: DOWN + SELECT (category jump in artist browser)
+        if self.button_states[Button.SELECT]:
+            self._on_category_jump_combo()
+            return
+
         screen = self._get_current_screen()
         if screen and hasattr(screen, 'on_down'):
             screen.on_down()
-    
+
     def _on_select(self):
         """Handle SELECT button press"""
+        self.button_states[Button.SELECT] = True
+        # Check for combo: DOWN + SELECT (category jump in artist browser)
+        if self.button_states[Button.DOWN]:
+            self._on_category_jump_combo()
+            return
+
         screen = self._get_current_screen()
         if screen and hasattr(screen, 'on_select'):
             screen.on_select()
@@ -102,6 +117,17 @@ class ButtonController:
         # Set a flag that the app can check
         if hasattr(self.app, 'return_to_now_playing'):
             self.app.return_to_now_playing()
+
+    def _on_category_jump_combo(self):
+        """Handle DOWN + SELECT combo to jump to next letter category"""
+        logger.debug("Category jump combo pressed (DOWN + SELECT)")
+        screen = self._get_current_screen()
+        if screen and hasattr(screen, 'jump_to_next_category'):
+            logger.info("Jumping to next letter category")
+            screen.jump_to_next_category()
+            # Redraw screen to show new position
+            if hasattr(screen, 'draw'):
+                screen.draw()
 
     def start(self):
         """Start button monitoring"""
