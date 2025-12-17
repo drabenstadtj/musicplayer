@@ -87,6 +87,11 @@ class ButtonController:
     def _on_select(self):
         """Handle SELECT button press"""
         self.button_states[Button.SELECT] = True
+        # Check for combo: BACK + SELECT (toggle letter selector)
+        if self.button_states[Button.BACK]:
+            self._on_letter_selector_toggle()
+            return
+
         # Check for combo: DOWN + SELECT (jump to next category)
         if self.button_states[Button.DOWN]:
             self._on_category_jump_next()
@@ -104,6 +109,11 @@ class ButtonController:
     def _on_back(self):
         """Handle BACK button press"""
         self.button_states[Button.BACK] = True
+        # Check for combo: SELECT + BACK (toggle letter selector)
+        if self.button_states[Button.SELECT]:
+            self._on_letter_selector_toggle()
+            return
+
         # Check for combo: UP + BACK (BTN1 + BTN4)
         if self.button_states[Button.UP]:
             self._on_now_playing_combo()
@@ -147,6 +157,17 @@ class ButtonController:
             logger.info("Jumping to previous letter category")
             screen.jump_to_prev_category()
             # Redraw screen to show new position
+            if hasattr(screen, 'draw'):
+                screen.draw()
+
+    def _on_letter_selector_toggle(self):
+        """Handle BACK + SELECT combo to toggle letter selector mode"""
+        logger.debug("Letter selector toggle combo pressed (BACK + SELECT)")
+        screen = self._get_current_screen()
+        if screen and hasattr(screen, 'toggle_letter_selector_mode'):
+            logger.info("Toggling letter selector mode")
+            screen.toggle_letter_selector_mode()
+            # Redraw screen to show new mode
             if hasattr(screen, 'draw'):
                 screen.draw()
 

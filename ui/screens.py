@@ -821,6 +821,10 @@ class ArtistBrowserScreen(BaseScreen):
         self.scroll_frame = 0
         self.last_artist_index = 0
 
+        # Letter selector mode
+        self.letter_selector_mode = False
+        self.selected_letter_index = 0
+
         # Build letter category index
         self.letter_categories = {}
         self.category_list = []
@@ -930,6 +934,34 @@ class ArtistBrowserScreen(BaseScreen):
             if self.category_list:
                 self.artist_index = self.letter_categories[self.category_list[-1]]
 
+    def toggle_letter_selector_mode(self):
+        """Toggle between artist browsing and letter selection mode"""
+        self.letter_selector_mode = not self.letter_selector_mode
+        if self.letter_selector_mode:
+            # Set selected letter to current category
+            current_letter = self.get_current_letter()
+            try:
+                self.selected_letter_index = self.category_list.index(current_letter)
+            except ValueError:
+                self.selected_letter_index = 0
+
+    def navigate_letter_selector(self, direction):
+        """Navigate through letters in selector mode"""
+        if not self.category_list:
+            return
+
+        if direction == "left":
+            self.selected_letter_index = (self.selected_letter_index - 1) % len(self.category_list)
+        elif direction == "right":
+            self.selected_letter_index = (self.selected_letter_index + 1) % len(self.category_list)
+
+    def jump_to_selected_letter(self):
+        """Jump to the currently selected letter and exit selector mode"""
+        if self.category_list and 0 <= self.selected_letter_index < len(self.category_list):
+            selected_letter = self.category_list[self.selected_letter_index]
+            self.artist_index = self.letter_categories[selected_letter]
+            self.letter_selector_mode = False
+
     def draw(self):
         # Reset scroll if selection changed
         if self.artist_index != self.last_artist_index:
@@ -940,8 +972,11 @@ class ArtistBrowserScreen(BaseScreen):
         self.stdscr.clear()
 
         # Show current letter category in status bar
-        current_letter = self.get_current_letter()
-        status_text = f"Artists [{current_letter}]" if current_letter else "Artists"
+        if self.letter_selector_mode:
+            status_text = "Letter Select Mode"
+        else:
+            current_letter = self.get_current_letter()
+            status_text = f"Artists [{current_letter}]" if current_letter else "Artists"
         self.draw_status_bar(status_text)
 
         # Draw artists (full width)
@@ -949,11 +984,18 @@ class ArtistBrowserScreen(BaseScreen):
 
         # Show letter category indicators on line 3
         if self.category_list:
-            categories_display = " ".join(self.category_list)
-            max_cat_width = self.width - 6
-            if display_width(categories_display) > max_cat_width:
-                categories_display = truncate_to_width(categories_display, max_cat_width)
-            self.stdscr.addstr(3, 2, categories_display, curses.color_pair(COLOR_NORMAL))
+            x_pos = 2
+            for idx, letter in enumerate(self.category_list):
+                # Highlight selected letter in selector mode
+                if self.letter_selector_mode and idx == self.selected_letter_index:
+                    self.stdscr.addstr(3, x_pos, letter, curses.color_pair(COLOR_SELECTED) | curses.A_BOLD)
+                else:
+                    self.stdscr.addstr(3, x_pos, letter, curses.color_pair(COLOR_NORMAL))
+                x_pos += len(letter) + 1  # letter + space
+
+                # Stop if we run out of space
+                if x_pos >= self.width - 4:
+                    break
 
         start = max(0, self.artist_index - 4)
         y = 5  # Starting y position for artist list
@@ -1010,41 +1052,85 @@ class ArtistBrowserScreen(BaseScreen):
 
             y += 1  # Move to next line for next artist
 
-        self.draw_footer("↑", "↓", "Select", "Back")
+        # Show different footer based on mode
+        if self.letter_selector_mode:
+            self.draw_footer("←Letter", "Letter→", "Jump", "Cancel")
+        else:
+            self.draw_footer("↑", "↓", "Select", "Back")
         self.stdscr.refresh()
 
     def handle_input(self, key):
-        if key == curses.KEY_UP:
-            self.artist_index = max(0, self.artist_index - 1)
+        # In letter selector mode, use different key bindings
+        if self.letter_selector_mode:
+            if key == curses.KEY_LEFT:
+                self.navigate_letter_selector("left")
+            elif key == curses.KEY_RIGHT:
+                self.navigate_letter_selector("right")
+            elif key == ord('\n'):  # Enter - jump to selected letter
+                self.jump_to_selected_letter()
+            elif key == curses.KEY_BACKSPACE or key == 127:  # Back - exit selector mode
+                self.letter_selector_mode = False
+            elif key == ord('q') or key == ord('Q'):
+                return False
+        else:
+            # Normal artist browsing mode
+            if key == curses.KEY_UP:
+                self.artist_index = max(0, self.artist_index - 1)
 
-        elif key == curses.KEY_DOWN:
-            self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
+            elif key == curses.KEY_DOWN:
+                self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
 
-        elif key == ord('\n'):  # Enter
-            return ("select_artist", self.artists[self.artist_index])
+            elif key == curses.KEY_LEFT or key == curses.KEY_RIGHT:
+                # LEFT/RIGHT toggle letter selector mode
+                self.toggle_letter_selector_mode()
 
-        elif key == curses.KEY_BACKSPACE or key == 127:
-            return "back"
+            elif key == ord('\n'):  # Enter
+                return ("select_artist", self.artists[self.artist_index])
 
-        elif key == ord('q') or key == ord('Q'):
-            return False
+            elif key == curses.KEY_BACKSPACE or key == 127:
+                return "back"
+
+            elif key == ord('q') or key == ord('Q'):
+                return False
 
         return True
 
     # Button support
     def on_up(self):
-        self.artist_index = max(0, self.artist_index - 1)
+        if self.letter_selector_mode:
+            # In letter selector mode, UP navigates left through letters
+            self.navigate_letter_selector("left")
+        else:
+            # Normal mode - navigate up in artist list
+            self.artist_index = max(0, self.artist_index - 1)
         self.draw()
 
     def on_down(self):
-        self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
+        if self.letter_selector_mode:
+            # In letter selector mode, DOWN navigates right through letters
+            self.navigate_letter_selector("right")
+        else:
+            # Normal mode - navigate down in artist list
+            self.artist_index = min(len(self.artists) - 1, self.artist_index + 1)
         self.draw()
 
     def on_select(self):
-        self._pending_action = ("select_artist", self.artists[self.artist_index])
+        if self.letter_selector_mode:
+            # Confirm letter selection and exit mode
+            self.jump_to_selected_letter()
+            self.draw()
+        else:
+            # Normal select - choose artist
+            self._pending_action = ("select_artist", self.artists[self.artist_index])
 
     def on_back(self):
-        self._pending_action = "back"
+        if self.letter_selector_mode:
+            # Exit letter selector mode
+            self.letter_selector_mode = False
+            self.draw()
+        else:
+            # Normal back
+            self._pending_action = "back"
 
 
 class PlaylistBrowserScreen(BaseScreen):
