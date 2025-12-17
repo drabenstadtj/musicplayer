@@ -937,8 +937,9 @@ class ArtistBrowserScreen(BaseScreen):
             self.stdscr.addstr(3, 2, categories_display, curses.color_pair(COLOR_NORMAL))
 
         start = max(0, self.artist_index - 4)
+        y = 5  # Starting y position for artist list
+
         for i in range(start, min(len(self.artists), start + 9)):
-            y = 5 + (i - start)
             if y >= self.height - 2:
                 break
 
@@ -946,16 +947,26 @@ class ArtistBrowserScreen(BaseScreen):
             artist_name = artist.get('name', 'Unknown Artist')
             album_count = artist.get('albumCount', 0)
 
-            # Show letter category header if this is the first artist in a new letter
-            if i == 0 or artist_name[0].upper() != self.artists[i-1].get('name', ' ')[0].upper():
-                letter = artist_name[0].upper() if artist_name[0].isalpha() else '#'
-                # Only show header if we're at the start of visible range or category changed
-                if i == start or (i > 0 and artist_name[0].upper() != self.artists[i-1].get('name', ' ')[0].upper()):
-                    # Draw category header
-                    self.stdscr.addstr(y, 2, f"--- {letter} ---", curses.A_DIM)
-                    y += 1
-                    if y >= self.height - 2:
-                        break
+            # Check if we need to show a category header
+            show_header = False
+            if i == 0:
+                # First artist ever
+                show_header = True
+            elif i > 0:
+                # Check if letter changed from previous artist
+                prev_name = self.artists[i-1].get('name', ' ')
+                curr_letter = artist_name[0].upper() if artist_name and artist_name[0].isalpha() else '#'
+                prev_letter = prev_name[0].upper() if prev_name and prev_name[0].isalpha() else '#'
+                if curr_letter != prev_letter:
+                    show_header = True
+
+            if show_header:
+                letter = artist_name[0].upper() if artist_name and artist_name[0].isalpha() else '#'
+                # Draw category header
+                self.stdscr.addstr(y, 2, f"--- {letter} ---", curses.A_DIM)
+                y += 1
+                if y >= self.height - 2:
+                    break
 
             # Format display
             is_selected = i == self.artist_index
@@ -977,6 +988,8 @@ class ArtistBrowserScreen(BaseScreen):
                 truncated_text = truncate_to_width(display_text, max_line_width)
                 self.stdscr.addstr(y, x_start, f"{prefix}{truncated_text}",
                                  curses.color_pair(COLOR_NORMAL))
+
+            y += 1  # Move to next line for next artist
 
         self.draw_footer("↑", "↓", "Select", "Back")
         self.stdscr.refresh()

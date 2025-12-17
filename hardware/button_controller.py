@@ -58,9 +58,14 @@ class ButtonController:
     def _on_up(self):
         """Handle UP button press"""
         self.button_states[Button.UP] = True
-        # Check for combo: UP + BACK (BTN1 + BTN4)
+        # Check for combo: UP + BACK (return to now playing)
         if self.button_states[Button.BACK]:
             self._on_now_playing_combo()
+            return
+
+        # Check for combo: UP + SELECT (category jump in artist browser)
+        if self.button_states[Button.SELECT]:
+            self._on_category_jump_combo()
             return
 
         screen = self._get_current_screen()
@@ -82,8 +87,8 @@ class ButtonController:
     def _on_select(self):
         """Handle SELECT button press"""
         self.button_states[Button.SELECT] = True
-        # Check for combo: DOWN + SELECT (category jump in artist browser)
-        if self.button_states[Button.DOWN]:
+        # Check for combo: DOWN + SELECT or UP + SELECT (category jump in artist browser)
+        if self.button_states[Button.DOWN] or self.button_states[Button.UP]:
             self._on_category_jump_combo()
             return
 
